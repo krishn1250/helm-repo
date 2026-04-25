@@ -1,0 +1,90 @@
+# =============================================================================
+# eg-strapi/values-prod.yaml
+# Artifact Registry: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-strapi-prod
+# Namespace: prod
+# =============================================================================
+
+namespace: prod
+
+image:
+  repository: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-strapi-prod/eg-strapi
+  tag: "SET_BY_CI"
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+  limits:
+    cpu: "2000m"
+    memory: "2Gi"
+
+persistence:
+  size: "50Gi"
+  storageClass: "premium-rwo"       # SSD-backed for prod
+
+podDisruptionBudget:
+  minAvailable: 1
+
+nodeSelector:
+  cloud.google.com/gke-nodepool: "dev-eg"
+
+ingress:
+  annotations:
+    ingressClassName: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "eg-strapi-prod-ip"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.allow-http: "false"
+  hosts:
+    - host: cms.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: eg-strapi-tls-prod
+      hosts:
+        - cms.example.com
+
+externalSecrets:
+  secrets:
+    - secretName: eg-strapi-app-secrets
+      data:
+        - secretKey: DATABASE_CLIENT
+          remoteRef:
+            key: eg-strapi-prod-database-client
+        - secretKey: DATABASE_HOST
+          remoteRef:
+            key: eg-strapi-prod-database-host
+        - secretKey: DATABASE_PORT
+          remoteRef:
+            key: eg-strapi-prod-database-port
+        - secretKey: DATABASE_NAME
+          remoteRef:
+            key: eg-strapi-prod-database-name
+        - secretKey: DATABASE_USERNAME
+          remoteRef:
+            key: eg-strapi-prod-database-username
+        - secretKey: DATABASE_PASSWORD
+          remoteRef:
+            key: eg-strapi-prod-database-password
+        - secretKey: JWT_SECRET
+          remoteRef:
+            key: eg-strapi-prod-jwt-secret
+        - secretKey: ADMIN_JWT_SECRET
+          remoteRef:
+            key: eg-strapi-prod-admin-jwt-secret
+        - secretKey: APP_KEYS
+          remoteRef:
+            key: eg-strapi-prod-app-keys
+        - secretKey: API_TOKEN_SALT
+          remoteRef:
+            key: eg-strapi-prod-api-token-salt
+
+env:
+  - name: PORT
+    value: "1337"
+  - name: HOST
+    value: "0.0.0.0"
+  - name: NODE_ENV
+    value: "production"

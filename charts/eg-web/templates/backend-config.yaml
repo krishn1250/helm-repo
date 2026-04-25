@@ -1,0 +1,46 @@
+{{- if .Values.backendConfig.enabled }}
+{{- $healthCheck := .Values.backendConfig.healthCheck | default dict }}
+{{- $sessionAffinity := .Values.backendConfig.sessionAffinity | default dict }}
+{{- $connectionDraining := .Values.backendConfig.connectionDraining | default dict }}
+{{- $cdn := .Values.backendConfig.cdn | default dict }}
+{{- $securityPolicy := .Values.backendConfig.securityPolicy | default dict }}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "eg-app.fullname" . }}-backendconfig
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+spec:
+  {{- if $healthCheck.enabled }}
+  healthCheck:
+    checkIntervalSec: {{ $healthCheck.checkIntervalSec }}
+    timeoutSec: {{ $healthCheck.timeoutSec }}
+    healthyThreshold: {{ $healthCheck.healthyThreshold }}
+    unhealthyThreshold: {{ $healthCheck.unhealthyThreshold }}
+    port: {{ $healthCheck.port }}
+    type: {{ $healthCheck.type }}
+    requestPath: {{ $healthCheck.requestPath | quote }}
+  {{- end }}
+  {{- if $sessionAffinity.enabled }}
+  sessionAffinity:
+    affinityType: {{ $sessionAffinity.affinityType | quote }}
+    affinityCookieTtlSec: {{ $sessionAffinity.affinityCookieTtlSec }}
+  {{- end }}
+  {{- if $connectionDraining.enabled }}
+  connectionDraining:
+    drainingTimeoutSec: {{ $connectionDraining.drainingTimeoutSec }}
+  {{- end }}
+  {{- if $cdn.enabled }}
+  cdn:
+    enabled: true
+    cachePolicy:
+      includeHost: true
+      includeProtocol: true
+      includeQueryString: false
+  {{- end }}
+  {{- if $securityPolicy.enabled }}
+  securityPolicy:
+    name: {{ $securityPolicy.name | quote }}
+  {{- end }}
+{{- end }}

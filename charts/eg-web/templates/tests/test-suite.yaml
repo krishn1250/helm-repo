@@ -1,0 +1,192 @@
+---
+# Test 1: Liveness endpoint responds 200
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-liveness
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-liveness
+      image: curlimages/curl:8.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing liveness endpoint..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://{{ include "eg-app.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/healthz)
+          echo "Status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: /healthz returned $STATUS, expected 200"
+            exit 1
+          fi
+          echo "PASS: /healthz returned 200"
+---
+# Test 2: Readiness endpoint responds 200
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-readiness
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-readiness
+      image: curlimages/curl:8.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing readiness endpoint..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://{{ include "eg-app.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/readyz)
+          echo "Status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: /readyz returned $STATUS, expected 200"
+            exit 1
+          fi
+          echo "PASS: /readyz returned 200"
+---
+# Test 3: Secret injection — verify env vars from ESO secret are present
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-secrets
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-secrets
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      envFrom:
+        - secretRef:
+            name: eg-app-app-secrets
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing secret injection..."
+          FAIL=0
+          for VAR in API_KEY DATABASE_URL; do
+            VAL=$(eval echo \$$VAR)
+            if [ -z "$VAL" ]; then
+              echo "FAIL: $VAR is empty or not injected"
+              FAIL=1
+            else
+              echo "PASS: $VAR is present (length=${#VAL})"
+            fi
+          done
+          exit $FAIL
+---
+# Test 4: DNS resolution — verify cluster DNS works
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-dns
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-dns
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing DNS resolution..."
+          nslookup {{ include "eg-app.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local
+          if [ $? -ne 0 ]; then
+            echo "FAIL: DNS resolution failed"
+            exit 1
+          fi
+          echo "PASS: DNS resolved successfully"
+---
+# Test 5: Network connectivity — service port reachable
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-network
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-network
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing TCP connectivity to service port..."
+          nc -zv {{ include "eg-app.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local {{ .Values.service.port }}
+          if [ $? -ne 0 ]; then
+            echo "FAIL: Cannot reach service on port {{ .Values.service.port }}"
+            exit 1
+          fi
+          echo "PASS: Port {{ .Values.service.port }} is reachable"

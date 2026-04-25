@@ -1,0 +1,218 @@
+# =============================================================================
+# eg-strapi/values.yaml — BASE defaults
+# Strapi is stateful: single replica, PVC for uploads, no read-only FS
+# =============================================================================
+
+global:
+  project: "MY_GCP_PROJECT"
+  cluster: "MY_CLUSTER_NAME"
+  region: "asia-south1"
+
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+namespace: dev
+
+# Strapi must run as single replica unless you set up shared storage (GCS FUSE / NFS)
+replicaCount: 1
+
+app:
+  port: 1337
+  terminationGracePeriodSeconds: 60
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# HPA disabled by default for Strapi — stateful + local uploads
+# Enable only if using GCS/external storage for uploads
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+# ---------------------------------------------------------------------------
+# Persistent Volume Claim — for Strapi uploads/public
+# ---------------------------------------------------------------------------
+persistence:
+  enabled: true
+  storageClass: "standard-rwo"      # GKE standard ReadWriteOnce
+  accessMode: ReadWriteOnce
+  size: "10Gi"
+  mountPath: /app/public/uploads
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 1337
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    ingressClassName: "gce"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.allow-http: "false"
+  hosts:
+    - host: "cms.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: eg-strapi-tls
+      hosts:
+        - "cms.example.com"
+
+probes:
+  liveness:
+    path: /_health
+    initialDelaySeconds: 60         # Strapi takes longer to start
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 10
+  readiness:
+    path: /_health
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    failureThreshold: 3
+    timeoutSeconds: 10
+  startup:
+    path: /_health
+    failureThreshold: 60            # 60 * 10s = 10min max startup (build phase)
+    periodSeconds: 10
+
+# ---------------------------------------------------------------------------
+# External Secrets — GCP Secret Manager
+# ---------------------------------------------------------------------------
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: gcp-secret-store
+    kind: ClusterSecretStore
+  secrets:
+    - secretName: eg-strapi-app-secrets
+      data:
+        - secretKey: DATABASE_CLIENT
+          remoteRef:
+            key: eg-strapi-database-client
+        - secretKey: DATABASE_HOST
+          remoteRef:
+            key: eg-strapi-database-host
+        - secretKey: DATABASE_PORT
+          remoteRef:
+            key: eg-strapi-database-port
+        - secretKey: DATABASE_NAME
+          remoteRef:
+            key: eg-strapi-database-name
+        - secretKey: DATABASE_USERNAME
+          remoteRef:
+            key: eg-strapi-database-username
+        - secretKey: DATABASE_PASSWORD
+          remoteRef:
+            key: eg-strapi-database-password
+        - secretKey: JWT_SECRET
+          remoteRef:
+            key: eg-strapi-jwt-secret
+        - secretKey: ADMIN_JWT_SECRET
+          remoteRef:
+            key: eg-strapi-admin-jwt-secret
+        - secretKey: APP_KEYS
+          remoteRef:
+            key: eg-strapi-app-keys
+        - secretKey: API_TOKEN_SALT
+          remoteRef:
+            key: eg-strapi-api-token-salt
+
+env:
+  - name: PORT
+    value: "1337"
+  - name: HOST
+    value: "0.0.0.0"
+  - name: NODE_ENV
+    value: "production"
+
+envFromSecrets:
+  - secretName: eg-strapi-app-secrets
+
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 1337
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 443
+          protocol: TCP
+    - ports:
+        - port: 5432
+          protocol: TCP
+
+# PDB — minAvailable 1 keeps Strapi up during node drain
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# No topologySpread for single-replica stateful app
+topologySpreadConstraints: []
+
+affinity: {}
+
+# Strapi runs as node user (uid 1000), needs writable FS for uploads
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# readOnlyRootFilesystem: false — Strapi writes to disk
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+serviceAccount:
+  create: true
+  name: eg-strapi-sa
+  annotations:
+    iam.gke.io/gcp-service-account: eg-strapi-sa@MY_GCP_PROJECT.iam.gserviceaccount.com
+
+nodeSelector:
+  cloud.google.com/gke-nodepool: "dev-eg"
+
+tolerations: []
+
+podAnnotations:
+  cluster-autoscaler.kubernetes.io/safe-to-evict: "false"   # has PVC
+  prometheus.io/scrape: "false"

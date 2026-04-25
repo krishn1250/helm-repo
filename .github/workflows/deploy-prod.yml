@@ -1,0 +1,308 @@
+# =============================================================================
+# .github/workflows/deploy-prod.yml
+#
+# Trigger : git tag  v*.*.*  (e.g. v1.4.2)
+# Flow    : build → push to PROD registries → helm diff → manual approval
+#           → helm upgrade → helm test → slack notify
+# Cluster : single GKE cluster, namespace: prod
+#
+# Required GitHub secrets:
+#   GCP_PROJECT                   GCP project ID
+#   GKE_CLUSTER                   GKE cluster name
+#   GCP_WORKLOAD_IDENTITY_PROVIDER  WIF provider resource name
+#   GCP_SERVICE_ACCOUNT           SA email used for WIF
+# =============================================================================
+
+name: Deploy → Prod
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+  GCP_REGION: asia-south1
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  NAMESPACE: prod
+  IMAGE_TAG: ${{ github.ref_name }}   # e.g. v1.4.2
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # JOB 1 — Build & push eg-web (prod registry)
+  # ---------------------------------------------------------------------------
+  build-eg-web:
+    name: Build eg-web (prod)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/eg-web-prod/eg-web"
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+      - name: Build & push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/eg-web
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ env.IMAGE_TAG }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:latest
+          cache-to: type=inline
+          build-args: |
+            NODE_ENV=production
+
+  # ---------------------------------------------------------------------------
+  # JOB 2 — Build & push eg-strapi (prod registry)
+  # ---------------------------------------------------------------------------
+  build-eg-strapi:
+    name: Build eg-strapi (prod)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/eg-strapi-prod/eg-strapi"
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+      - name: Build & push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/eg-strapi
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ env.IMAGE_TAG }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:latest
+          cache-to: type=inline
+          build-args: |
+            NODE_ENV=production
+
+  # ---------------------------------------------------------------------------
+  # JOB 3 — Helm diff (runs before approval so reviewer sees the diff)
+  # ---------------------------------------------------------------------------
+  helm-diff:
+    name: Helm Diff (prod preview)
+    runs-on: ubuntu-latest
+    needs: [build-eg-web, build-eg-strapi]
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GCP_REGION }}
+
+      - name: Install Helm + diff plugin
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm plugin install https://github.com/databus23/helm-diff --version v3.9.4
+
+      - name: "[eg-web] Helm diff"
+        run: |
+          echo "## eg-web Prod Diff — ${{ env.IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo '```diff' >> $GITHUB_STEP_SUMMARY
+          helm diff upgrade eg-web ./charts/eg-web \
+            -f ./charts/eg-web/values.yaml \
+            -f ./charts/eg-web/values-prod.yaml \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --allow-unreleased \
+            --color \
+            --no-hooks 2>&1 | tee -a /dev/stdout >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: "[eg-strapi] Helm diff"
+        run: |
+          echo "## eg-strapi Prod Diff — ${{ env.IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo '```diff' >> $GITHUB_STEP_SUMMARY
+          helm diff upgrade eg-strapi ./charts/eg-strapi \
+            -f ./charts/eg-strapi/values.yaml \
+            -f ./charts/eg-strapi/values-prod.yaml \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --allow-unreleased \
+            --color \
+            --no-hooks 2>&1 | tee -a /dev/stdout >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # JOB 4 — Manual approval gate (reviewer sees diff above before approving)
+  # ---------------------------------------------------------------------------
+  approve-prod:
+    name: Approve Prod Deploy
+    runs-on: ubuntu-latest
+    needs: helm-diff
+    environment:
+      name: prod                    # GitHub Environment with required reviewers set
+      url: https://web.example.com
+
+    steps:
+      - name: Approval granted
+        run: echo "Prod deployment approved for ${{ env.IMAGE_TAG }}"
+
+  # ---------------------------------------------------------------------------
+  # JOB 5 — Helm deploy (prod)
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: Helm Deploy → Prod
+    runs-on: ubuntu-latest
+    needs: approve-prod
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GCP_REGION }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.4"
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace ${{ env.NAMESPACE }} \
+            environment=prod \
+            app.kubernetes.io/managed-by=helm \
+            --overwrite
+
+      # ── eg-web ──────────────────────────────────────────────────────────────
+      - name: "[eg-web] Helm upgrade"
+        run: |
+          helm upgrade --install eg-web ./charts/eg-web \
+            -f ./charts/eg-web/values.yaml \
+            -f ./charts/eg-web/values-prod.yaml \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --atomic \
+            --timeout 5m \
+            --cleanup-on-fail \
+            --history-max 10
+
+      - name: "[eg-web] Wait for rollout"
+        run: |
+          kubectl rollout status deployment/eg-web \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout=5m
+
+      - name: "[eg-web] Helm test"
+        run: |
+          helm test eg-web \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout 3m \
+            --logs
+
+      # ── eg-strapi ───────────────────────────────────────────────────────────
+      - name: "[eg-strapi] Helm upgrade"
+        run: |
+          helm upgrade --install eg-strapi ./charts/eg-strapi \
+            -f ./charts/eg-strapi/values.yaml \
+            -f ./charts/eg-strapi/values-prod.yaml \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --atomic \
+            --timeout 8m \
+            --cleanup-on-fail \
+            --history-max 10
+
+      - name: "[eg-strapi] Wait for rollout"
+        run: |
+          kubectl rollout status deployment/eg-strapi \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout=8m
+
+      - name: "[eg-strapi] Helm test"
+        run: |
+          helm test eg-strapi \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout 5m \
+            --logs
+
+      # ── Rollback on failure ─────────────────────────────────────────────────
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deploy failed — rolling back both services to previous release"
+          helm rollback eg-web 0 --namespace ${{ env.NAMESPACE }} --wait || true
+          helm rollback eg-strapi 0 --namespace ${{ env.NAMESPACE }} --wait || true
+
+      # ── Summary ─────────────────────────────────────────────────────────────
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Prod Deployment — ${{ env.IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Service    | Tag | Namespace | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|-----|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| eg-web     | \`${{ env.IMAGE_TAG }}\` | prod | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| eg-strapi  | \`${{ env.IMAGE_TAG }}\` | prod | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY

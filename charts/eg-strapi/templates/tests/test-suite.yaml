@@ -1,0 +1,171 @@
+---
+# Test 1: Strapi health endpoint
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-strapi.fullname" . }}-test-health
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-strapi.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-health
+      image: curlimages/curl:8.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing Strapi /_health endpoint..."
+          # Retry up to 10 times — Strapi can be slow to be ready post-deploy
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://{{ include "eg-strapi.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/_health)
+            echo "Attempt $i: Status=$STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "PASS: /_health returned 200"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "FAIL: /_health did not return 200 after 10 attempts"
+          exit 1
+---
+# Test 2: Secret injection — all 10 Strapi secrets present
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-strapi.fullname" . }}-test-secrets
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-strapi.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-secrets
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      envFrom:
+        - secretRef:
+            name: eg-strapi-app-secrets
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing secret injection..."
+          FAIL=0
+          for VAR in DATABASE_CLIENT DATABASE_HOST DATABASE_PORT DATABASE_NAME \
+                     DATABASE_USERNAME DATABASE_PASSWORD JWT_SECRET \
+                     ADMIN_JWT_SECRET APP_KEYS API_TOKEN_SALT; do
+            VAL=$(eval echo \$$VAR)
+            if [ -z "$VAL" ]; then
+              echo "FAIL: $VAR is empty or missing"
+              FAIL=1
+            else
+              echo "PASS: $VAR present (length=${#VAL})"
+            fi
+          done
+          exit $FAIL
+---
+# Test 3: PVC is mounted and writable
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-strapi.fullname" . }}-test-pvc
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-strapi.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-pvc
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false   # needs write for test
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Testing PVC mount and writability..."
+          TEST_FILE="{{ .Values.persistence.mountPath }}/.helm-test-probe"
+          echo "helm-test" > "$TEST_FILE"
+          if [ $? -ne 0 ]; then
+            echo "FAIL: Cannot write to {{ .Values.persistence.mountPath }}"
+            exit 1
+          fi
+          rm -f "$TEST_FILE"
+          echo "PASS: PVC at {{ .Values.persistence.mountPath }} is writable"
+      volumeMounts:
+        - name: uploads
+          mountPath: {{ .Values.persistence.mountPath }}
+  volumes:
+    - name: uploads
+      persistentVolumeClaim:
+        claimName: {{ include "eg-strapi.fullname" . }}-uploads
+---
+# Test 4: DNS + network reachability
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-strapi.fullname" . }}-test-network
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-strapi.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-network
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          SVC="{{ include "eg-strapi.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local"
+          echo "==> DNS resolution for $SVC..."
+          nslookup "$SVC" || { echo "FAIL: DNS resolution failed"; exit 1; }
+          echo "PASS: DNS resolved"
+
+          echo "==> TCP connectivity to port {{ .Values.service.port }}..."
+          nc -zv "$SVC" {{ .Values.service.port }} || { echo "FAIL: Port unreachable"; exit 1; }
+          echo "PASS: Port {{ .Values.service.port }} reachable"

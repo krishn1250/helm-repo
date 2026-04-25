@@ -1,0 +1,160 @@
+image:
+  repository: "europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app"
+  tag: "v1.0.0"
+
+namespace: dev-eg
+
+replicaCount: 2
+
+namespaceLabels:
+  environment: dev
+  team: enhanced-games
+
+managedCertificate:
+  enabled: true
+  domains:
+    - "app-dev.enhanced.com"
+
+
+nodeSelector:
+  cloud.google.com/gke-nodepool: "eg-dev-app"
+
+
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+  staticIpName: "eg-dev-ext-ip"
+  backendConfig: ""
+  extraAnnotations:
+    kubernetes.io/ingress.allow-http: "true"
+  hosts:
+    - host: "app-dev.enhanced.com"
+      paths:
+        - path: /
+          pathType: Prefix
+
+
+# ingress:
+#   enabled: true
+#   className: "gce"
+
+#   annotations:
+#     kubernetes.io/ingress.allow-http: "false"
+#     networking.gke.io/managed-certificates: "app-cert"
+
+#   staticIpName: "eg-dev-ext-ip"
+
+#   hosts:
+#     - host: "app-dev.enhanced.com"
+#       paths:
+#         - path: /
+#           pathType: Prefix
+
+networkPolicy:
+  enabled: false
+
+
+# Disable everything backend related
+backendConfig:
+  enabled: false
+
+
+probes:
+  liveness:
+    path: /
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    failureThreshold: 3
+    timeoutSeconds: 5
+  readiness:
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 5
+  startup:
+    path: /
+    failureThreshold: 30
+    periodSeconds: 10
+
+service:
+  type: NodePort
+  port: 3000
+  targetPort: 3000
+  annotations:
+    cloud.google.com/neg: '{"exposed_ports":{"3000":{}}}'
+
+externalSecrets:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: gcp-dev-secret-store
+    kind: ClusterSecretStore
+    serviceAccountName: gke-workload-sa        # ← add this
+    serviceAccountNamespace: dev-eg            # ← add this
+  secrets:
+    - secretName: eg-dev-app-secrets
+      data:
+        - secretKey: VITE_STRAPI_URL
+          remoteRef:
+            key: eg-dev-strapi-url
+        - secretKey: VITE_STRAPI_TOKEN
+          remoteRef:
+            key: eg-dev-strapi-token
+
+auth:
+  workloadIdentity:
+    clusterLocation: europe-west2
+    clusterName: eg-cluster
+    serviceAccountRef:
+      name: gke-workload-sa
+
+
+tolerations:
+  - key: "environment"
+    operator: "Equal"
+    value: "development"
+    effect: "NoSchedule"
+
+serviceAccount:
+  create: true
+  name: gke-workload-sa
+  annotations:
+    iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
+
+envFromSecrets:
+  - secretName: eg-dev-app-secrets
+
+
+hpa:
+  enabled: true
+  minReplicas: 2  
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

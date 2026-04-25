@@ -1,0 +1,14 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "eg-strapi.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-strapi.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "eg-strapi.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,81 @@
+# =============================================================================
+# eg-strapi/values-dev.yaml
+# Artifact Registry: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-strapi-dev
+# Namespace: dev
+# =============================================================================
+
+namespace: dev
+
+image:
+  repository: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-strapi-dev/eg-strapi
+  tag: "SET_BY_CI"
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+persistence:
+  size: "5Gi"
+
+nodeSelector:
+  cloud.google.com/gke-nodepool: "dev-eg"
+
+ingress:
+  hosts:
+    - host: cms-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: eg-strapi-tls-dev
+      hosts:
+        - cms-dev.example.com
+
+externalSecrets:
+  secrets:
+    - secretName: eg-strapi-app-secrets
+      data:
+        - secretKey: DATABASE_CLIENT
+          remoteRef:
+            key: eg-strapi-dev-database-client
+        - secretKey: DATABASE_HOST
+          remoteRef:
+            key: eg-strapi-dev-database-host
+        - secretKey: DATABASE_PORT
+          remoteRef:
+            key: eg-strapi-dev-database-port
+        - secretKey: DATABASE_NAME
+          remoteRef:
+            key: eg-strapi-dev-database-name
+        - secretKey: DATABASE_USERNAME
+          remoteRef:
+            key: eg-strapi-dev-database-username
+        - secretKey: DATABASE_PASSWORD
+          remoteRef:
+            key: eg-strapi-dev-database-password
+        - secretKey: JWT_SECRET
+          remoteRef:
+            key: eg-strapi-dev-jwt-secret
+        - secretKey: ADMIN_JWT_SECRET
+          remoteRef:
+            key: eg-strapi-dev-admin-jwt-secret
+        - secretKey: APP_KEYS
+          remoteRef:
+            key: eg-strapi-dev-app-keys
+        - secretKey: API_TOKEN_SALT
+          remoteRef:
+            key: eg-strapi-dev-api-token-salt
+
+env:
+  - name: PORT
+    value: "1337"
+  - name: HOST
+    value: "0.0.0.0"
+  - name: NODE_ENV
+    value: "development"
