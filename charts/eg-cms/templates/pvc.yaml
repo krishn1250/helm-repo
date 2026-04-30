@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}-uploads
+  name: {{ include "eg-cms.fullname" . }}-uploads
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
     # Prevent helm uninstall from deleting PVC (protect data)
     helm.sh/resource-policy: keep

@@ -1,26 +1,47 @@
 {{- if .Values.ingress.enabled }}
+{{- $className := .Values.ingress.className | default "" }}
+{{- $managedCertificate := .Values.managedCertificate | default dict }}
+{{- $ingressAnnotations := .Values.ingress.annotations | default dict }}
+{{- $certManagerIssuer := index $ingressAnnotations "cert-manager.io/cluster-issuer" | default "" }}
+{{- if and $managedCertificate.enabled $certManagerIssuer }}
+{{- fail "invalid configuration: managedCertificate.enabled=true cannot be used with cert-manager.io/cluster-issuer annotation" }}
+{{- end }}
+{{- $backendConfigName := "" }}
+{{- if .Values.ingress.backendConfig }}
+{{- $backendConfigName = .Values.ingress.backendConfig }}
+{{- else if .Values.backendConfig.enabled }}
+{{- $backendConfigName = printf "%s-backendconfig" (include "eg-cms.fullname" .) }}
+{{- end }}
+{{- $certName := "" }}
+{{- if $managedCertificate.enabled }}
+{{- $certName = $managedCertificate.name | default (printf "%s-cert" (include "eg-cms.fullname" .)) }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}
+  name: {{ include "eg-cms.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
-    {{- toYaml .Values.ingress.annotations | nindent 4 }}
-spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if .Values.ingress.tls }}
-  tls:
-    {{- range .Values.ingress.tls }}
-    - hosts:
-        {{- range .hosts }}
-        - {{ . | quote }}
-        {{- end }}
-      secretName: {{ .secretName }}
+    {{- range $k, $v := $ingressAnnotations }}
+    {{- if $v }}
+    {{ $k }}: {{ $v | quote }}
     {{- end }}
+    {{- end }}
+    {{- if $managedCertificate.enabled }}
+    networking.gke.io/managed-certificates: {{ $certName | quote }}
+    kubernetes.io/ingress.allow-http: "false"
+    {{- end }}
+    {{- if $backendConfigName }}
+    cloud.google.com/backend-config: {{ printf "{\"default\": \"%s\"}" $backendConfigName | quote }}
+    {{- end }}
+    {{- with .Values.ingress.extraAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if $className }}
+  ingressClassName: {{ $className | quote }}
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
@@ -32,9 +53,9 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "eg-strapi.fullname" $ }}
+                name: {{ include "eg-cms.fullname" $ }}
                 port:
-                  number: {{ $.Values.service.port }}
+                  number: {{ $.Values.service.port | default 3000 }}
           {{- end }}
     {{- end }}
 {{- end }}

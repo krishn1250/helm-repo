@@ -3,10 +3,10 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}-test-health
+  name: {{ include "eg-cms.fullname" . }}-test-health
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "1"
@@ -31,7 +31,7 @@ spec:
           # Retry up to 10 times — Strapi can be slow to be ready post-deploy
           for i in $(seq 1 10); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              http://{{ include "eg-strapi.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/_health)
+              http://{{ include "eg-cms.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/_health)
             echo "Attempt $i: Status=$STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "PASS: /_health returned 200"
@@ -46,10 +46,10 @@ spec:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}-test-secrets
+  name: {{ include "eg-cms.fullname" . }}-test-secrets
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "2"
@@ -68,7 +68,7 @@ spec:
           drop: ["ALL"]
       envFrom:
         - secretRef:
-            name: eg-strapi-app-secrets
+            name: eg-cms-app-secrets
       command:
         - sh
         - -c
@@ -92,10 +92,10 @@ spec:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}-test-pvc
+  name: {{ include "eg-cms.fullname" . }}-test-pvc
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "3"
@@ -131,16 +131,16 @@ spec:
   volumes:
     - name: uploads
       persistentVolumeClaim:
-        claimName: {{ include "eg-strapi.fullname" . }}-uploads
+        claimName: {{ include "eg-cms.fullname" . }}-uploads
 ---
 # Test 4: DNS + network reachability
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}-test-network
+  name: {{ include "eg-cms.fullname" . }}-test-network
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-weight": "4"
@@ -161,7 +161,7 @@ spec:
         - sh
         - -c
         - |
-          SVC="{{ include "eg-strapi.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local"
+          SVC="{{ include "eg-cms.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local"
           echo "==> DNS resolution for $SVC..."
           nslookup "$SVC" || { echo "FAIL: DNS resolution failed"; exit 1; }
           echo "PASS: DNS resolved"

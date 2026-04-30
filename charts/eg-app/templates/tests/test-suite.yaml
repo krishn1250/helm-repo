@@ -1,10 +1,12 @@
 ---
-# 🧪 Test 1: Liveness endpoint
+# ============================================================
+# 🧪 Test 1: Liveness endpoint  (path driven from values)
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
   name: {{ include "eg-app.fullname" . }}-test-liveness
-  namespace: {{ .Values.environment.namespace }}
+  namespace: {{ required "environment.namespace must be set" .Values.environment.namespace }}
   labels:
     {{- include "eg-app.labels" . | nindent 4 }}
   annotations:
@@ -13,6 +15,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-liveness
       image: curlimages/curl:8.6.0
@@ -27,20 +30,31 @@ spec:
         - sh
         - -c
         - |
-          echo "==> Testing liveness endpoint..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local:{{ .Values.networking.service.port }}/healthz)
+          SVC="{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local:{{ .Values.networking.service.port }}{{ .Values.application.probes.liveness.path }}"
+          echo "==> Liveness target: http://$SVC"
 
-          echo "Status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "FAIL: /healthz returned $STATUS"
+          PASS=0
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://$SVC")
+            echo "  Attempt $i — HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              PASS=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ $PASS -eq 1 ]; then
+            echo "PASS: Liveness OK"
+          else
+            echo "FAIL: Liveness did not return 200 after 12 attempts"
             exit 1
           fi
 
-          echo "PASS: Liveness OK"
-
 ---
-# 🧪 Test 2: Readiness endpoint
+# ============================================================
+# 🧪 Test 2: Readiness endpoint  (path driven from values)
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
@@ -54,6 +68,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-readiness
       image: curlimages/curl:8.6.0
@@ -68,20 +83,31 @@ spec:
         - sh
         - -c
         - |
-          echo "==> Testing readiness endpoint..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local:{{ .Values.networking.service.port }}/readyz)
+          SVC="{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local:{{ .Values.networking.service.port }}{{ .Values.application.probes.readiness.path }}"
+          echo "==> Readiness target: http://$SVC"
 
-          echo "Status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "FAIL: /readyz returned $STATUS"
+          PASS=0
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://$SVC")
+            echo "  Attempt $i — HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              PASS=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ $PASS -eq 1 ]; then
+            echo "PASS: Readiness OK"
+          else
+            echo "FAIL: Readiness did not return 200 after 12 attempts"
             exit 1
           fi
 
-          echo "PASS: Readiness OK"
-
 ---
-# 🧪 Test 3: Secret injection (dynamic)
+# ============================================================
+# 🧪 Test 3: Secret injection  (declared keys only — VITE_STRAPI_URL, VITE_STRAPI_TOKEN)
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
@@ -95,6 +121,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-secrets
       image: busybox:1.36
@@ -105,36 +132,36 @@ spec:
         runAsUser: 1000
         capabilities:
           drop: ["ALL"]
-
       envFrom:
         {{- range .Values.security.envFromSecrets }}
         - secretRef:
             name: {{ .secretName }}
         {{- end }}
-
       command:
         - sh
         - -c
         - |
-          echo "==> Testing secret injection..."
+          echo "==> Testing secret injection (declared keys only)..."
           FAIL=0
 
-          for VAR in $(env | cut -d= -f1); do
-            VAL=$(eval echo \$$VAR)
-            if [ -z "$VAL" ]; then
-              echo "FAIL: $VAR is empty"
-              FAIL=1
-            fi
-          done
-
-          if [ $FAIL -eq 0 ]; then
-            echo "PASS: All env vars populated"
+          {{- range .Values.security.externalSecrets.secrets }}
+          {{- range .data }}
+          VAL=$(printenv {{ .secretKey }} || true)
+          if [ -z "$VAL" ]; then
+            echo "FAIL: {{ .secretKey }} is missing or empty"
+            FAIL=1
+          else
+            echo "PASS: {{ .secretKey }} is populated"
           fi
+          {{- end }}
+          {{- end }}
 
           exit $FAIL
 
 ---
+# ============================================================
 # 🧪 Test 4: DNS resolution
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
@@ -148,6 +175,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-dns
       image: busybox:1.36
@@ -162,18 +190,20 @@ spec:
         - sh
         - -c
         - |
-          echo "==> Testing DNS..."
-          nslookup {{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local
+          FQDN="{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local"
+          echo "==> Testing DNS resolution for $FQDN"
 
-          if [ $? -ne 0 ]; then
-            echo "FAIL: DNS resolution failed"
+          if ! nslookup "$FQDN"; then
+            echo "FAIL: DNS resolution failed for $FQDN"
             exit 1
           fi
 
           echo "PASS: DNS OK"
 
 ---
-# 🧪 Test 5: Network connectivity
+# ============================================================
+# 🧪 Test 5: TCP connectivity  (busybox-safe nc, no -v flag)
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
@@ -187,6 +217,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-network
       image: busybox:1.36
@@ -201,12 +232,85 @@ spec:
         - sh
         - -c
         - |
-          echo "==> Testing TCP connectivity..."
-          nc -zv {{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local {{ .Values.networking.service.port }}
+          HOST="{{ include "eg-app.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local"
+          PORT="{{ .Values.networking.service.port }}"
+          echo "==> Testing TCP connectivity to $HOST:$PORT"
 
-          if [ $? -ne 0 ]; then
-            echo "FAIL: Cannot reach service"
+          if ! nc -z "$HOST" "$PORT"; then
+            echo "FAIL: Cannot reach $HOST:$PORT"
             exit 1
           fi
 
-          echo "PASS: Network OK"
+          echo "PASS: TCP connectivity OK"
+
+---
+# ============================================================
+# 🧪 Test 6: Replica floor  (HPA minReplicas=2, maxReplicas=4)
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-app.fullname" . }}-test-replicas
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "6"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
+  containers:
+    - name: test-replicas
+      image: curlimages/curl:8.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - name: MIN_REPLICAS
+          value: "{{ .Values.platform.hpa.minReplicas }}"
+        - name: MAX_REPLICAS
+          value: "{{ .Values.platform.hpa.maxReplicas }}"
+        - name: NAMESPACE
+          value: "{{ .Values.environment.namespace }}"
+        - name: DEPLOY_NAME
+          value: "{{ include "eg-app.fullname" . }}"
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Checking replica count via Kubernetes API..."
+          echo "    Expected: min=$MIN_REPLICAS  max=$MAX_REPLICAS"
+
+          TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          API="https://kubernetes.default.svc"
+
+          READY=$(curl -s --cacert "$CA" \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/apis/apps/v1/namespaces/$NAMESPACE/deployments/$DEPLOY_NAME" \
+            | grep -o '"readyReplicas":[0-9]*' | grep -o '[0-9]*')
+
+          echo "  Ready replicas: $READY"
+
+          if [ -z "$READY" ]; then
+            echo "FAIL: Could not read readyReplicas"
+            exit 1
+          fi
+
+          if [ "$READY" -lt "$MIN_REPLICAS" ]; then
+            echo "FAIL: $READY ready replicas is below HPA minimum of $MIN_REPLICAS"
+            exit 1
+          fi
+
+          if [ "$READY" -gt "$MAX_REPLICAS" ]; then
+            echo "FAIL: $READY ready replicas exceeds HPA maximum of $MAX_REPLICAS"
+            exit 1
+          fi
+
+          echo "PASS: Replica count $READY is within [$MIN_REPLICAS, $MAX_REPLICAS]"

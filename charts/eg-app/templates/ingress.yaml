@@ -33,7 +33,7 @@ metadata:
 
     {{- if $managedCertificate.enabled }}
     networking.gke.io/managed-certificates: {{ $certName | quote }}
-    kubernetes.io/ingress.allow-http: "false"
+    kubernetes.io/ingress.allow-http: "true"
     {{- end }}
 
     {{- if $backendConfigName }}
@@ -60,7 +60,7 @@ spec:
           {{- range .paths }}
           - path: {{ .path | default "/" }}
             pathType: {{ .pathType | default "Prefix" }}
-            backend:
+            backend:  
               service:
                 name: {{ .serviceName }}
                 port:

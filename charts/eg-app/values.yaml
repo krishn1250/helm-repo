@@ -9,9 +9,7 @@ environment:
     environment: ""
     team: ""
 
-# -------------------
 # APPLICATION
-# -------------------
 application:
   name: ""
   replicaCount: 2
@@ -30,7 +28,13 @@ application:
     LOG_LEVEL: info
     PORT: "3000"
 
-  resources: {}
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
 
   probes:
     liveness:
@@ -50,11 +54,8 @@ application:
       failureThreshold: 30
       periodSeconds: 10
 
-# -------------------
 # NETWORKING
-# -------------------
 networking:
-
   service:
     type: ClusterIP
     port: 3000
@@ -66,7 +67,7 @@ networking:
     className: "gce"
     annotations:
       kubernetes.io/ingress.class: "gce"
-      kubernetes.io/ingress.allow-http: "true"
+      kubernetes.io/ingress.allow-http: "false"  # ← secure by default
     hosts: []
 
   managedCertificate:
@@ -74,11 +75,8 @@ networking:
     name: ""
     domains: []
 
-# -------------------
 # SECURITY
-# -------------------
 security:
-
   serviceAccount:
     create: true
     name: ""
@@ -97,6 +95,8 @@ security:
     secretStoreRef:
       name: ""
       kind: ClusterSecretStore
+      serviceAccountName: ""
+      serviceAccountNamespace: ""
     secrets: []
 
   envFromSecrets: []
@@ -104,7 +104,17 @@ security:
   networkPolicy:
     enabled: true
     ingress: []
-    egress: []
+    egress:
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - protocol: TCP
+            port: 443
+          - protocol: UDP
+            port: 53
+          - protocol: TCP
+            port: 53
 
   backendConfig:
     enabled: true
@@ -113,12 +123,13 @@ security:
       name: ""
     cdn:
       enabled: false
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
 
-# -------------------
 # PLATFORM
-# -------------------
 platform:
-
   deployment:
     revisionHistoryLimit: 3
 
@@ -130,7 +141,7 @@ platform:
     enabled: true
     minReplicas: 2
     maxReplicas: 5
-
+    revisionHistoryLimit: 3
     metrics:
       - type: Resource
         resource:
@@ -138,26 +149,36 @@ platform:
           target:
             type: Utilization
             averageUtilization: 70
-
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
     behavior:
       scaleUp:
         stabilizationWindowSeconds: 60
+        selectPolicy: Max
         policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 60
           - type: Pods
             value: 2
             periodSeconds: 60
       scaleDown:
         stabilizationWindowSeconds: 300
+        selectPolicy: Max
         policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
           - type: Pods
             value: 1
-            periodSeconds: 60
+            periodSeconds: 120
 
-# -------------------
 # POD CONFIG
-# -------------------
 pod:
-
   annotations:
     cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
     prometheus.io/scrape: "true"
@@ -170,7 +191,7 @@ pod:
     runAsGroup: 1000
     fsGroup: 1000
 
-  containerSecurityContext: 
+  containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:

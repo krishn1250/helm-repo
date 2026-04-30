@@ -2,13 +2,17 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}
+  name: {{ include "eg-cms.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
 spec:
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      {{- include "eg-strapi.selectorLabels" . | nindent 6 }}
+      {{- include "eg-cms.selectorLabels" . | nindent 6 }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  {{- end }}
 {{- end }}

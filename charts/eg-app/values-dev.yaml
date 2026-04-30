@@ -1,46 +1,42 @@
 # ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
+
 environment:
   namespace: dev-eg
   labels:
-    environment: dev
+    environment: development
     team: enhanced-games
-  
 
-  global:
-    project: enhanced-games-gc   
-    region: europe-west2
-    cluster: eg-cluster           
+global:
+  project: enhanced-games-gc
+  region: europe-west2
+  cluster: eg-cluster
 
-
-
-
-#  APPLICATION CONFIGURATION
+# APPLICATION CONFIGURATION
 application:
   name: eg-app
   replicaCount: 2
 
   image:
-      repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
-      tag: v1.2.4
-      pullPolicy: IfNotPresent
+    repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
+    tag: v1.2.4
+    pullPolicy: IfNotPresent
 
   app:
     port: 3000
     env: development
     terminationGracePeriodSeconds: 60
 
-
   config:
-      LOG_LEVEL: debug
-      PORT: "3000"
+    LOG_LEVEL: debug
+    PORT: "3000"
 
   resources:
-      requests:
-        cpu: "250m"
-        memory: "512Mi"
-      limits:
-        cpu: "500m"
-        memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
 
   probes:
     liveness:
@@ -60,10 +56,7 @@ application:
       failureThreshold: 30
       periodSeconds: 10
 
-
-
 # NETWORK CONFIGURATION
-
 networking:
   service:
     type: ClusterIP
@@ -74,49 +67,48 @@ networking:
       cloud.google.com/backend-config: '{"ports": {"3000":"eg-app-backendconfig"}}'
 
   ingress:
-      enabled: true
-      className: gce
-      annotations:
-        kubernetes.io/ingress.global-static-ip-name: eg-dev-ext-ip
-        kubernetes.io/ingress.allow-http: "true"
-      hosts:
-        - host: app-dev.enhanced.com
-          paths:
-            - path: /
-              pathType: Prefix
-              serviceName: eg-app
-              servicePort: 3000
-        - host: cms-dev.enhanced.com
-          paths:
-            - path: /
-              pathType: Prefix
-              serviceName: eg-cms
-              servicePort: 1337
+    enabled: true
+    className: gce
+    annotations:
+      kubernetes.io/ingress.class: "gce"
+      kubernetes.io/ingress.global-static-ip-name: eg-dev-ext-ip
+      # kubernetes.io/ingress.allow-http: "true"    # ← HTTPS only
+    hosts:
+      - host: app-dev.enhanced.com
+        paths:
+          - path: /
+            pathType: Prefix
+            serviceName: eg-app
+            servicePort: 3000
+      - host: cms-dev.enhanced.com
+        paths:
+          - path: /
+            pathType: Prefix
+            serviceName: eg-cms
+            servicePort: 1337
 
   managedCertificate:
-      enabled: true
-      name: eg-dev-cert
-      domains:
-        - app-dev.enhanced.com
-        - cms-dev.enhanced.com
-  
+    enabled: true
+    name: eg-dev-cert
+    domains:
+      - app-dev.enhanced.com
+      - cms-dev.enhanced.com
 
-
-#  SECURITY CONFIGURATION
-
+# SECURITY CONFIGURATION
 security:
   serviceAccount:
     create: true
     name: gke-workload-sa
+    automountToken: false
     annotations:
       iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
-  
+
   workloadIdentity:
     clusterLocation: europe-west2
     clusterName: eg-cluster
     serviceAccountRef:
       name: gke-workload-sa
-  
+      namespace: dev-eg
 
   externalSecrets:
     enabled: true
@@ -135,16 +127,18 @@ security:
           - secretKey: VITE_STRAPI_TOKEN
             remoteRef:
               key: eg-dev-strapi-token
-    
+
   envFromSecrets:
     - secretName: eg-dev-app-secrets
-  
 
   networkPolicy:
-    enabled: true
+    enabled: false
     ingress:
       - from:
-          - namespaceSelector: {}
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: dev-eg   # ← own namespace only
+          - podSelector: {}
         ports:
           - protocol: TCP
             port: 3000
@@ -156,25 +150,22 @@ security:
               cidr: 0.0.0.0/0
         ports:
           - protocol: TCP
-            port: 80
+            port: 443             # ← HTTPS only, removed port 80
+          - protocol: UDP
+
+            port: 53              # ← DNS resolution
           - protocol: TCP
-            port: 443
-  
+            port: 53
+
   backendConfig:
     enabled: true
+    name: eg-dev-app-backendconfig
     securityPolicy:
       name: eg-dev-security-policy
     cdn:
       enabled: false
-      cachePolicy:
-        includeHost: true
-        includeProtocol: true
-        includeQueryString: false
-
-
 
 # PLATFORM CONFIGURATION
-
 platform:
   deployment:
     revisionHistoryLimit: 3
@@ -223,22 +214,8 @@ platform:
             value: 1
             periodSeconds: 120
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# POD CONFIG
 pod:
-
   annotations:
     cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
     prometheus.io/scrape: "true"
@@ -251,7 +228,6 @@ pod:
     runAsGroup: 1000
     fsGroup: 1000
 
-
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
@@ -259,7 +235,6 @@ pod:
       drop:
         - ALL
 
-  
   nodeSelector:
     cloud.google.com/gke-nodepool: "eg-dev-app-np"
 
@@ -268,15 +243,3 @@ pod:
       operator: "Equal"
       value: "development"
       effect: "NoSchedule"
-
-
-
-
-
-
-
-
-
-
-
-

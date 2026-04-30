@@ -2,19 +2,23 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}
+  name: {{ include "eg-cms.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "eg-strapi.selectorLabels" . | nindent 6 }}
+      {{- include "eg-cms.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
     - Egress
+  {{- with .Values.networkPolicy.ingress }}
   ingress:
-    {{- toYaml .Values.networkPolicy.ingress | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.networkPolicy.egress }}
   egress:
-    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

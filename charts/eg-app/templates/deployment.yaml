@@ -8,97 +8,80 @@ metadata:
   annotations:
     checksum/secrets: {{ include (print $.Template.BasePath "/external-secret.yaml") . | sha256sum }}
     checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-
 spec:
   revisionHistoryLimit: {{ .Values.platform.deployment.revisionHistoryLimit | default 3 }}
-
   {{- if not .Values.platform.hpa.enabled }}
-  replicas: {{ .Values.application.replicaCount }}
+  replicas: {{ .Values.application.replicaCount | default 2 }}
   {{- end }}
-
   selector:
     matchLabels:
       {{- include "eg-app.selectorLabels" . | nindent 6 }}
-
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-
   template:
     metadata:
       labels:
         {{- include "eg-app.labels" . | nindent 8 }}
-      {{- with .Values.application.podAnnotations }}
+      {{- with .Values.pod.annotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
     spec:
       serviceAccountName: {{ include "eg-app.serviceAccountName" . }}
-
+      automountServiceAccountToken: {{ .Values.security.serviceAccount.automountToken | default false }}
       terminationGracePeriodSeconds: {{ .Values.application.app.terminationGracePeriodSeconds | default 60 }}
-
+      {{- with .Values.pod.securityContext }}
       securityContext:
-        {{- toYaml .Values.application.podSecurityContext | nindent 8 }}
-
-      {{- with .Values.application.topologySpreadConstraints }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pod.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
-      {{- with .Values.application.affinity }}
+      {{- with .Values.pod.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       {{- with .Values.pod.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       {{- with .Values.pod.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       containers:
         - name: {{ include "eg-app.name" . }}
           image: "{{ .Values.application.image.repository }}:{{ .Values.application.image.tag }}"
           imagePullPolicy: {{ .Values.application.image.pullPolicy | default "IfNotPresent" }}
-
+          {{- with .Values.pod.containerSecurityContext }}
           securityContext:
-            {{- toYaml .Values.application.containerSecurityContext | nindent 12 }}
-
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.application.app.port }}
+              containerPort: {{ .Values.application.app.port | default 3000 }}
               protocol: TCP
-
-          # 🔌 Config + Secrets injection
           envFrom:
             - configMapRef:
                 name: {{ include "eg-app.fullname" . }}-config
-
             {{- range .Values.security.envFromSecrets }}
             - secretRef:
                 name: {{ .secretName }}
             {{- end }}
-
           {{- with .Values.application.env }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-
-          # 🧪 Probes
           startupProbe:
             httpGet:
               path: {{ .Values.application.probes.startup.path }}
               port: http
             failureThreshold: {{ .Values.application.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.application.probes.startup.periodSeconds }}
-
           livenessProbe:
             httpGet:
               path: {{ .Values.application.probes.liveness.path }}
@@ -107,7 +90,6 @@ spec:
             periodSeconds: {{ .Values.application.probes.liveness.periodSeconds }}
             failureThreshold: {{ .Values.application.probes.liveness.failureThreshold }}
             timeoutSeconds: {{ .Values.application.probes.liveness.timeoutSeconds }}
-
           readinessProbe:
             httpGet:
               path: {{ .Values.application.probes.readiness.path }}
@@ -116,14 +98,10 @@ spec:
             periodSeconds: {{ .Values.application.probes.readiness.periodSeconds }}
             failureThreshold: {{ .Values.application.probes.readiness.failureThreshold }}
             timeoutSeconds: {{ .Values.application.probes.readiness.timeoutSeconds }}
-
-          # ⚙️ Resources
           {{- with .Values.application.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-
-          # 📦 Temp volumes (vite etc.)
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -131,7 +109,6 @@ spec:
               mountPath: /tmp/.vite
             - name: vite-temp
               mountPath: /app/node_modules/.vite-temp
-
       volumes:
         - name: tmp
           emptyDir: {}

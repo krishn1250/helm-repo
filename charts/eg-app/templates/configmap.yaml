@@ -5,13 +5,11 @@ metadata:
   namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-app.labels" . | nindent 4 }}
-
 data:
-  APP_ENV: {{ .Values.environment.application.app.env | default .Values.environment.namespace | quote }}
-  GCP_REGION: {{ .Values.environment.global.region | quote }}
-  GCP_PROJECT: {{ .Values.environment.global.project | quote }}
-  CLUSTER_NAME: {{ .Values.environment.global.cluster | quote }}
-
-  {{- with .Values.environment.application.config }}
-  {{- toYaml . | nindent 4 }}
+  APP_ENV: {{ .Values.application.app.env | default "development" | quote }}
+  GCP_REGION: {{ .Values.global.region | quote }}
+  GCP_PROJECT: {{ .Values.global.project | quote }}
+  CLUSTER_NAME: {{ .Values.global.cluster | quote }}
+  {{- with .Values.application.config }}
+  {{- toYaml . | nindent 2 }}
   {{- end }}

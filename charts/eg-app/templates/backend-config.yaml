@@ -1,0 +1,20 @@
+{{- if .Values.security.backendConfig.enabled }}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "eg-app.fullname" . }}-backendconfig
+  namespace: {{ .Values.environment.namespace }}
+spec:
+  {{- if .Values.security.backendConfig.securityPolicy }}
+  securityPolicy:
+    name: {{ .Values.security.backendConfig.securityPolicy.name }}
+  {{- end }}
+  {{- if .Values.security.backendConfig.cdn.enabled }}
+  cdn:
+    enabled: true
+    cachePolicy:
+      includeHost: {{ .Values.security.backendConfig.cdn.cachePolicy.includeHost }}
+      includeProtocol: {{ .Values.security.backendConfig.cdn.cachePolicy.includeProtocol }}
+      includeQueryString: {{ .Values.security.backendConfig.cdn.cachePolicy.includeQueryString }}
+  {{- end }}
+{{- end }}

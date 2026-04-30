@@ -1,8 +1,8 @@
-{{- define "eg-strapi.name" -}}
+{{- define "eg-cms.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "eg-strapi.fullname" -}}
+{{- define "eg-cms.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -15,28 +15,33 @@
 {{- end }}
 {{- end }}
 
-{{- define "eg-strapi.chart" -}}
+{{- define "eg-cms.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "eg-strapi.labels" -}}
-helm.sh/chart: {{ include "eg-strapi.chart" . }}
-{{ include "eg-strapi.selectorLabels" . }}
+{{- define "eg-cms.labels" -}}
+helm.sh/chart: {{ include "eg-cms.chart" . }}
+{{ include "eg-cms.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Values.image.tag | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: eg-platform
 environment: {{ .Values.namespace }}
 {{- end }}
 
-{{- define "eg-strapi.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "eg-strapi.name" . }}
+{{- define "eg-cms.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "eg-cms.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "eg-strapi.serviceAccountName" -}}
+{{- define "eg-cms.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "eg-strapi.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "eg-cms.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
+{{- end }}
+
+
+{{- define "eg-cms.externalSecretsApiVersion" -}}
+external-secrets.io/v1
 {{- end }}

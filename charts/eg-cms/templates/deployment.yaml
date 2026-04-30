@@ -1,81 +1,93 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "eg-strapi.fullname" . }}
+  name: {{ include "eg-cms.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "eg-strapi.labels" . | nindent 4 }}
+    {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
+    {{- if .Values.externalSecrets.enabled }}
     checksum/secrets: {{ include (print $.Template.BasePath "/external-secret.yaml") . | sha256sum }}
+    {{- end }}
     checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
 spec:
-  # Strapi = single replica (PVC is ReadWriteOnce)
+  revisionHistoryLimit: {{ .Values.deployment.revisionHistoryLimit | default 3 }}
+  {{- if not .Values.hpa.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "eg-strapi.selectorLabels" . | nindent 6 }}
+      {{- include "eg-cms.selectorLabels" . | nindent 6 }}
   strategy:
-    # Recreate avoids two pods fighting over the same RWO PVC
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
-        {{- include "eg-strapi.labels" . | nindent 8 }}
+        {{- include "eg-cms.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
       annotations:
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
-      serviceAccountName: {{ include "eg-strapi.serviceAccountName" . }}
-      terminationGracePeriodSeconds: {{ .Values.app.terminationGracePeriodSeconds }}
+      serviceAccountName: {{ include "eg-cms.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.app.terminationGracePeriodSeconds | default 60 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-
-      {{- with .Values.topologySpreadConstraints }}
-      topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-
       containers:
-        - name: {{ include "eg-strapi.name" . }}
+        - name: {{ include "eg-cms.name" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
             - name: http
-              containerPort: {{ .Values.app.port }}
+              containerPort: {{ .Values.app.port | default 1337 }}
               protocol: TCP
+          # ======================
+          # CORE ENV (NON-SECRETS)
+          # ======================
           env:
-            {{- toYaml .Values.env | nindent 12 }}
-          {{- if .Values.envFromSecrets }}
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.app.port | default 1337 | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.app.env | default "development" | quote }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # ======================
+          # CONFIGMAP + SECRETS
+          # ======================
           envFrom:
+            - configMapRef:
+                name: {{ include "eg-cms.fullname" . }}-config
+            {{- if and .Values.externalSecrets.enabled .Values.envFromSecrets }}
             {{- range .Values.envFromSecrets }}
             - secretRef:
                 name: {{ .secretName }}
             {{- end }}
-          {{- end }}
-
+            {{- end }}
+          # ======================
+          # PROBES
+          # ======================
           startupProbe:
             httpGet:
               path: {{ .Values.probes.startup.path }}
               port: http
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
-
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
@@ -84,7 +96,6 @@ spec:
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
-
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
@@ -93,23 +104,27 @@ spec:
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
             timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
-
+          # ======================
+          # RESOURCES
+          # ======================
+          {{- with .Values.resources }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # ======================
+          # VOLUME MOUNTS
+          # ======================
           volumeMounts:
-            - name: uploads
-              mountPath: {{ .Values.persistence.mountPath }}
             - name: tmp
               mountPath: /tmp
-
+            - name: cache
+              mountPath: /var/cache
+            - name: strapi-config
+              mountPath: /home/node/.config
       volumes:
-        - name: uploads
-          {{- if .Values.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "eg-strapi.fullname" . }}-uploads
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
         - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}
+        - name: strapi-config
           emptyDir: {}
