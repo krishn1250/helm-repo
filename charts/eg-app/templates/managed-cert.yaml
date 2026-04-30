@@ -1,0 +1,31 @@
+{{- $managedCertificate := .Values.networking.managedCertificate | default dict }}
+
+{{- if $managedCertificate.enabled }}
+
+{{- $domains := $managedCertificate.domains | default list }}
+
+{{- if not $domains }}
+  {{- range .Values.networking.ingress.hosts }}
+    {{- $domains = append $domains .host }}
+  {{- end }}
+{{- end }}
+
+{{- if not $domains }}
+{{- fail "ManagedCertificate enabled but no domains provided via networking.managedCertificate.domains or ingress.hosts" }}
+{{- end }}
+
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ $managedCertificate.name | default (printf "%s-cert" (include "eg-app.fullname" .)) }}
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+
+spec:
+  domains:
+    {{- range $domains }}
+    - {{ . | quote }}
+    {{- end }}
+
+{{- end }}

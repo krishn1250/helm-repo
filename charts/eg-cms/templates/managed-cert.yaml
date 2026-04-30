@@ -1,0 +1,22 @@
+{{- $managedCertificate := .Values.managedCertificate | default dict }}
+{{- if $managedCertificate.enabled }}
+{{- $domains := $managedCertificate.domains }}
+{{- if not $domains }}
+{{- $domains = list }}
+{{- range .Values.ingress.hosts }}
+{{- $domains = append $domains .host }}
+{{- end }}
+{{- end }}
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ $managedCertificate.name | default (printf "%s-cert" (include "eg-cms.fullname" .)) }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+spec:
+  domains:
+    {{- range $domains }}
+    - {{ . | quote }}
+    {{- end }}
+{{- end }}

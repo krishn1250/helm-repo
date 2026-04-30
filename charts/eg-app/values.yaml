@@ -1,0 +1,181 @@
+global:
+  project: "enhanced-games-gc"
+  cluster: "eg-cluster"
+  region: "europe-west2"
+
+environment:
+  namespace: ""
+  labels:
+    environment: ""
+    team: ""
+
+# -------------------
+# APPLICATION
+# -------------------
+application:
+  name: ""
+  replicaCount: 2
+
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  app:
+    port: 3000
+    env: ""
+    terminationGracePeriodSeconds: 60
+
+  config:
+    LOG_LEVEL: info
+    PORT: "3000"
+
+  resources: {}
+
+  probes:
+    liveness:
+      path: /healthz
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      failureThreshold: 3
+      timeoutSeconds: 5
+    readiness:
+      path: /readyz
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+      timeoutSeconds: 5
+    startup:
+      path: /healthz
+      failureThreshold: 30
+      periodSeconds: 10
+
+# -------------------
+# NETWORKING
+# -------------------
+networking:
+
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+    annotations: {}
+
+  ingress:
+    enabled: true
+    className: "gce"
+    annotations:
+      kubernetes.io/ingress.class: "gce"
+      kubernetes.io/ingress.allow-http: "true"
+    hosts: []
+
+  managedCertificate:
+    enabled: true
+    name: ""
+    domains: []
+
+# -------------------
+# SECURITY
+# -------------------
+security:
+
+  serviceAccount:
+    create: true
+    name: ""
+    automountToken: false
+    annotations:
+      iam.gke.io/gcp-service-account: ""
+
+  workloadIdentity:
+    serviceAccountRef:
+      name: ""
+      namespace: ""
+
+  externalSecrets:
+    enabled: true
+    refreshInterval: "1h"
+    secretStoreRef:
+      name: ""
+      kind: ClusterSecretStore
+    secrets: []
+
+  envFromSecrets: []
+
+  networkPolicy:
+    enabled: true
+    ingress: []
+    egress: []
+
+  backendConfig:
+    enabled: true
+    name: ""
+    securityPolicy:
+      name: ""
+    cdn:
+      enabled: false
+
+# -------------------
+# PLATFORM
+# -------------------
+platform:
+
+  deployment:
+    revisionHistoryLimit: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        policies:
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 60
+
+# -------------------
+# POD CONFIG
+# -------------------
+pod:
+
+  annotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+  containerSecurityContext: 
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  nodeSelector: {}
+  tolerations: []

@@ -1,0 +1,282 @@
+# ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
+environment:
+  namespace: dev-eg
+  labels:
+    environment: dev
+    team: enhanced-games
+  
+
+  global:
+    project: enhanced-games-gc   
+    region: europe-west2
+    cluster: eg-cluster           
+
+
+
+
+#  APPLICATION CONFIGURATION
+application:
+  name: eg-app
+  replicaCount: 2
+
+  image:
+      repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
+      tag: v1.2.4
+      pullPolicy: IfNotPresent
+
+  app:
+    port: 3000
+    env: development
+    terminationGracePeriodSeconds: 60
+
+
+  config:
+      LOG_LEVEL: debug
+      PORT: "3000"
+
+  resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+
+  probes:
+    liveness:
+      path: /
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      failureThreshold: 3
+      timeoutSeconds: 5
+    readiness:
+      path: /
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+      timeoutSeconds: 5
+    startup:
+      path: /
+      failureThreshold: 30
+      periodSeconds: 10
+
+
+
+# NETWORK CONFIGURATION
+
+networking:
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: '{"ports": {"3000":"eg-app-backendconfig"}}'
+
+  ingress:
+      enabled: true
+      className: gce
+      annotations:
+        kubernetes.io/ingress.global-static-ip-name: eg-dev-ext-ip
+        kubernetes.io/ingress.allow-http: "true"
+      hosts:
+        - host: app-dev.enhanced.com
+          paths:
+            - path: /
+              pathType: Prefix
+              serviceName: eg-app
+              servicePort: 3000
+        - host: cms-dev.enhanced.com
+          paths:
+            - path: /
+              pathType: Prefix
+              serviceName: eg-cms
+              servicePort: 1337
+
+  managedCertificate:
+      enabled: true
+      name: eg-dev-cert
+      domains:
+        - app-dev.enhanced.com
+        - cms-dev.enhanced.com
+  
+
+
+#  SECURITY CONFIGURATION
+
+security:
+  serviceAccount:
+    create: true
+    name: gke-workload-sa
+    annotations:
+      iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
+  
+  workloadIdentity:
+    clusterLocation: europe-west2
+    clusterName: eg-cluster
+    serviceAccountRef:
+      name: gke-workload-sa
+  
+
+  externalSecrets:
+    enabled: true
+    refreshInterval: 1h
+    secretStoreRef:
+      name: gcp-dev-secret-store
+      kind: ClusterSecretStore
+      serviceAccountName: gke-workload-sa
+      serviceAccountNamespace: dev-eg
+    secrets:
+      - secretName: eg-dev-app-secrets
+        data:
+          - secretKey: VITE_STRAPI_URL
+            remoteRef:
+              key: eg-dev-strapi-url
+          - secretKey: VITE_STRAPI_TOKEN
+            remoteRef:
+              key: eg-dev-strapi-token
+    
+  envFromSecrets:
+    - secretName: eg-dev-app-secrets
+  
+
+  networkPolicy:
+    enabled: true
+    ingress:
+      - from:
+          - namespaceSelector: {}
+        ports:
+          - protocol: TCP
+            port: 3000
+          - protocol: TCP
+            port: 1337
+    egress:
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - protocol: TCP
+            port: 80
+          - protocol: TCP
+            port: 443
+  
+  backendConfig:
+    enabled: true
+    securityPolicy:
+      name: eg-dev-security-policy
+    cdn:
+      enabled: false
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
+
+
+
+# PLATFORM CONFIGURATION
+
+platform:
+  deployment:
+    revisionHistoryLimit: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    revisionHistoryLimit: 3
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 65
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 60
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
+          - type: Pods
+            value: 1
+            periodSeconds: 120
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pod:
+
+  annotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  
+  nodeSelector:
+    cloud.google.com/gke-nodepool: "eg-dev-app-np"
+
+  tolerations:
+    - key: "environment"
+      operator: "Equal"
+      value: "development"
+      effect: "NoSchedule"
+
+
+
+
+
+
+
+
+
+
+
+

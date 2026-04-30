@@ -1,0 +1,61 @@
+{{- if .Values.security.networkPolicy.enabled }}
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "eg-app.fullname" . }}
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "eg-app.selectorLabels" . | nindent 6 }}
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # --------------------
+  # INGRESS RULES
+  # --------------------
+  ingress:
+    {{- if .Values.security.networkPolicy.ingress }}
+    {{- toYaml .Values.security.networkPolicy.ingress | nindent 4 }}
+    {{- else }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              environment: {{ .Values.environment.labels.environment | default "dev" }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.application.app.port }}
+    {{- end }}
+
+  # --------------------
+  # EGRESS RULES
+  # --------------------
+  egress:
+    {{- if .Values.security.networkPolicy.egress }}
+    {{- toYaml .Values.security.networkPolicy.egress | nindent 4 }}
+    {{- else }}
+    # Allow HTTPS outbound
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow DNS (CRITICAL)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+
+{{- end }}

@@ -1,0 +1,30 @@
+{{- if .Values.platform.podDisruptionBudget.enabled }}
+
+{{- $pdb := .Values.platform.podDisruptionBudget }}
+
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "podDisruptionBudget: cannot set both minAvailable and maxUnavailable" }}
+{{- end }}
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "eg-app.fullname" . }}
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+
+spec:
+  selector:
+    matchLabels:
+      {{- include "eg-app.selectorLabels" . | nindent 6 }}
+
+  {{- if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- else if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+
+{{- end }}

@@ -1,0 +1,71 @@
+{{- if .Values.networking.ingress.enabled }}
+
+{{- $className := .Values.networking.ingress.className | default "gce" }}
+{{- $managedCertificate := .Values.networking.managedCertificate | default dict }}
+{{- $ingressAnnotations := .Values.networking.ingress.annotations | default dict }}
+
+{{- $certManagerIssuer := index $ingressAnnotations "cert-manager.io/cluster-issuer" | default "" }}
+{{- if and $managedCertificate.enabled $certManagerIssuer }}
+{{- fail "invalid configuration: managedCertificate.enabled=true cannot be used with cert-manager issuer" }}
+{{- end }}
+
+{{- $backendConfigName := .Values.security.backendConfig.name | default "" }}
+
+{{- $certName := "" }}
+{{- if $managedCertificate.enabled }}
+{{- $certName = $managedCertificate.name | default (printf "%s-cert" (include "eg-app.fullname" .)) }}
+{{- end }}
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "eg-app.fullname" . }}
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+
+  annotations:
+    {{- range $k, $v := $ingressAnnotations }}
+    {{- if $v }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- end }}
+
+    {{- if $managedCertificate.enabled }}
+    networking.gke.io/managed-certificates: {{ $certName | quote }}
+    kubernetes.io/ingress.allow-http: "false"
+    {{- end }}
+
+    {{- if $backendConfigName }}
+    cloud.google.com/backend-config: {{ printf "{\"default\": \"%s\"}" $backendConfigName | quote }}
+    {{- end }}
+
+spec:
+  ingressClassName: {{ $className | quote }}
+
+  {{- if not $managedCertificate.enabled }}
+  tls:
+    - hosts:
+        {{- range .Values.networking.ingress.hosts }}
+        - {{ .host }}
+        {{- end }}
+      secretName: {{ printf "%s-tls" (include "eg-app.fullname" .) }}
+  {{- end }}
+
+  rules:
+    {{- range .Values.networking.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ .serviceName }}
+                port:
+                  number: {{ .servicePort }}
+          {{- end }}
+    {{- end }}
+
+{{- end }}

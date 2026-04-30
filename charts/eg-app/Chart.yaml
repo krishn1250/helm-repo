@@ -1,0 +1,24 @@
+apiVersion: v2
+name: eg-app
+description: Production-grade stateless Web/API service — single GKE cluster
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+
+keywords:
+  - web
+  - api
+  - kubernetes
+  - gke
+  - helm
+  - microservice
+  - backend
+
+maintainers:
+  - name: platform-team
+    email: kreddy@rezolve.com
+
+annotations:
+  category: application
+

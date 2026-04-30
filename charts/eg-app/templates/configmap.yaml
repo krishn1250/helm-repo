@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "eg-app.fullname" . }}-config
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-app.labels" . | nindent 4 }}
+
+data:
+  APP_ENV: {{ .Values.environment.application.app.env | default .Values.environment.namespace | quote }}
+  GCP_REGION: {{ .Values.environment.global.region | quote }}
+  GCP_PROJECT: {{ .Values.environment.global.project | quote }}
+  CLUSTER_NAME: {{ .Values.environment.global.cluster | quote }}
+
+  {{- with .Values.environment.application.config }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
