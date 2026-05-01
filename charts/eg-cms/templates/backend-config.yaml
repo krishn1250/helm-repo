@@ -16,13 +16,6 @@ spec:
     affinityType: {{ .Values.backendConfig.sessionAffinity.affinityType | quote }}
     ttlSec: {{ .Values.backendConfig.sessionAffinity.ttlSec }}
   {{- end }}
-  {{- if .Values.backendConfig.circuitBreaker.enabled }}
-  circuitBreaker:
-    maxConnections: {{ .Values.backendConfig.circuitBreaker.maxConnections }}
-    maxPendingRequests: {{ .Values.backendConfig.circuitBreaker.maxPendingRequests }}
-    maxRequests: {{ .Values.backendConfig.circuitBreaker.maxRequests }}
-    maxRetries: {{ .Values.backendConfig.circuitBreaker.maxRetries }}
-  {{- end }}
   {{- if .Values.backendConfig.CustomRequestHeaders }}
   customRequestHeaders:
     {{- toYaml .Values.backendConfig.CustomRequestHeaders | nindent 4 }}

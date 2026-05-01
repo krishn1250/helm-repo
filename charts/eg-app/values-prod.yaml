@@ -1,114 +1,253 @@
-# =============================================================================
-# eg-app/values-prod.yaml
-# Artifact Registry: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-app-prod
-# Namespace: prod
-# =============================================================================
+# PROJECT DETAILS
+global:
+  project: enhanced-games-gc
+  region: europe-west2
+  cluster: eg-cluster
 
-namespace: prod
+# ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
+environment:
+  namespace: prod-eg
+  labels:
+    environment: production
+    team: enhanced-games
 
-image:
-  repository: asia-south1-docker.pkg.dev/MY_GCP_PROJECT/eg-app-prod/eg-app
-  tag: "SET_BY_CI"
+# APPLICATION CONFIGURATION
+application:
+  name: eg-app
+  replicaCount: 2
 
-replicaCount: 3
+  image:
+    repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-prod-app/eg-app
+    tag: v0.0.0
+    pullPolicy: IfNotPresent
 
-resources:
-  requests:
-    cpu: "250m"
-    memory: "256Mi"
-  limits:
-    cpu: "1000m"
-    memory: "512Mi"
+  app:
+    port: 3000
+    env: production
+    terminationGracePeriodSeconds: 60
 
-hpa:
-  minReplicas: 3
-  maxReplicas: 20
+  config:
+    LOG_LEVEL: debug
+    PORT: "3000"
 
-podDisruptionBudget:
-  minAvailable: 2
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
 
+  probes:
+    liveness:
+      path: /
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      failureThreshold: 3
+      timeoutSeconds: 5
+    readiness:
+      path: /
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+      timeoutSeconds: 5
+    startup:
+      path: /
+      failureThreshold: 30
+      periodSeconds: 10
 
-topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels:
-        app.kubernetes.io/name: eg-app
+# NETWORK CONFIGURATION
+networking:
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: '{"ports": {"3000":"eg-app-backendconfig"}}'
 
-
-priorityClassName: high-priority
-
-networkPolicy:
-  enabled: true
   ingress:
-    # Allow GKE ingress controller
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - port: 3000
-          protocol: TCP
-    # Allow same namespace
-    - from:
-        - podSelector: {}
-      ports:
-        - port: 3000
-          protocol: TCP
-  egress:
-    # Allow DNS
-    - ports:
-        - port: 53
-          protocol: UDP
-        - port: 53
-          protocol: TCP
-    # Allow HTTPS to GCP services
-    - ports:
-        - port: 443
-          protocol: TCP
-    # Allow Cloud SQL
-    - ports:
-        - port: 5432
-          protocol: TCP
+    enabled: true
+    className: gce
+    annotations:
+      kubernetes.io/ingress.class: "gce"
+      kubernetes.io/ingress.global-static-ip-name: eg-prod-ext-ip
+      # kubernetes.io/ingress.allow-http: "true"    # ← HTTPS only
+    hosts:
+      - host: app.enhanced.com
+        paths:
+          - path: /
+            pathType: Prefix
+            serviceName: eg-app
+            servicePort: 3000
+      - host: cms.enhanced.com
+        paths:
+          - path: /
+            pathType: Prefix
+            serviceName: eg-cms
+            servicePort: 1337
 
+  managedCertificate:
+    enabled: true
+    name: eg-prod-cert
+    domains:
+      - app.enhanced.com
+      - cms.enhanced.com
 
-nodeSelector:
-  cloud.google.com/gke-nodepool: "eg-app-pool"    # single node-pool shared across namespaces
+# SECURITY CONFIGURATION
+security:
+  serviceAccount:
+    create: true
+    name: gke-workload-sa
+    automountToken: false
+    annotations:
+      iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
 
-ingress:
-  enabled: true
-  className: "gce"
-  annotations: {}
-  staticIpName: "eg-app-prod-ip"
-  extraAnnotations:
-    kubernetes.io/ingress.allow-http: "false"
-  hosts:
-    - host: web.example.com
-      paths:
-        - path: /
-          pathType: Prefix
+  workloadIdentity:
+    clusterLocation: europe-west2
+    clusterName: eg-cluster
+    serviceAccountRef:
+      name: gke-workload-sa
+      namespace: prod-eg
 
-managedCertificate:
-  enabled: true
-  domains:
-    - web.example.com
+  externalSecrets:
+    enabled: true
+    refreshInterval: 1h
+    secretStoreRef:
+      name: gcp-prod-secret-store
+      kind: ClusterSecretStore
+      serviceAccountName: gke-workload-sa
+      serviceAccountNamespace: prod-eg
+    secrets:
+      - secretName: eg-prod-app-secrets
+        data:
+          - secretKey: VITE_STRAPI_URL
+            remoteRef:
+              key: eg-prod-strapi-url
+          - secretKey: VITE_STRAPI_TOKEN
+            remoteRef:
+              key: eg-prod-strapi-token
 
-externalSecrets:
-  secrets:
-    - secretName: eg-app-app-secrets
-      data:
-        - secretKey: API_KEY
-          remoteRef:
-            key: eg-app-prod-api-key
-        - secretKey: DATABASE_URL
-          remoteRef:
-            key: eg-app-prod-database-url
+  envFromSecrets:
+    - secretName: eg-prod-app-secrets
 
-env:
-  - name: PORT
-    value: "3000"
-  - name: LOG_LEVEL
-    value: "info"
-  - name: APP_ENV
-    value: "production"
+  networkPolicy:
+    enabled: false
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: prod-eg   # ← own namespace only
+          - podSelector: {}
+        ports:
+          - protocol: TCP
+            port: 3000
+          - protocol: TCP
+            port: 1337
+    egress:
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - protocol: TCP
+            port: 443             # ← HTTPS only, removed port 80
+          - protocol: UDP
+
+            port: 53              # ← DNS resolution
+          - protocol: TCP
+            port: 53
+
+  backendConfig:
+    enabled: true
+    name: eg-app-backendconfig
+    securityPolicy:
+      name: eg-prod-app-security-policy
+    cdn:
+      enabled: true
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
+      cacheMode: CACHE_ALL_STATIC
+      defaultTtl: 3600
+      maxTtl: 86400
+      negativeCaching: true
+
+# PLATFORM CONFIGURATION
+platform:
+  deployment:
+    revisionHistoryLimit: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    revisionHistoryLimit: 3
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 65
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 60
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
+          - type: Pods
+            value: 1
+            periodSeconds: 120
+
+# POD CONFIG
+pod:
+  annotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+  containerSecurityContext:
+    allowPrivilegeEscalation: true
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+
+  nodeSelector:
+    cloud.google.com/gke-nodepool: "eg-prod-app-np"
+
+  tolerations:
+    - key: "environment"
+      operator: "Equal"
+      value: "development"
+      effect: "NoSchedule"

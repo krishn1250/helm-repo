@@ -6,6 +6,8 @@ environment:
     environment: development
     team: enhanced-games
 
+
+# PROJECT DETAILS
 global:
   project: enhanced-games-gc
   region: europe-west2
@@ -18,11 +20,12 @@ application:
 
   image:
     repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
-    tag: v1.2.4
+    tag: v1.2.6
     pullPolicy: IfNotPresent
 
   app:
     port: 3000
+    name: "app"
     env: development
     terminationGracePeriodSeconds: 60
 
@@ -47,7 +50,7 @@ application:
       timeoutSeconds: 5
     readiness:
       path: /
-      initialDelaySeconds: 10
+      initialDelaySeconds: 20
       periodSeconds: 10
       failureThreshold: 3
       timeoutSeconds: 5
@@ -159,11 +162,19 @@ security:
 
   backendConfig:
     enabled: true
-    name: eg-dev-app-backendconfig
+    name: eg-app-backendconfig
     securityPolicy:
       name: eg-dev-security-policy
     cdn:
-      enabled: false
+      enabled: true
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
+      cacheMode: CACHE_ALL_STATIC
+      defaultTtl: 3600
+      maxTtl: 86400
+      negativeCaching: true
 
 # PLATFORM CONFIGURATION
 platform:
@@ -230,7 +241,7 @@ pod:
 
   containerSecurityContext:
     allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
+    readOnlyRootFilesystem: false
     capabilities:
       drop:
         - ALL

@@ -1,142 +1,93 @@
-image:
-  repository: "europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-cms/eg-cms"
-  tag: "v1.1.0"
-
+#PROJECT DETAILS
 global:
   project: enhanced-games-gc
   region: europe-west2
   cluster: eg-cluster
 
-app:
-  port: 1337
-  name: "cms"
-  env: "development"
-  terminationGracePeriodSeconds: 60
+# ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
+environment:
+  namespace: dev-eg
+  labels:
+    environment: development
+    team: enhanced-games
 
-podDisruptionBudget:
-  enabled: false
+#APPLICATION CONFIGURATION
+application:
+  name: eg-cms
+  replicaCount: 2
 
-namespace: dev-eg
+  image:
+    repository: "europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-cms/eg-cms"
+    tag: "v1.1.2"
+    pullPolicy: IfNotPresent
 
-
-
-database:
-  client: "postgres"
-  host: "10.13.0.5"
-  port: "5432"
-  name: "postgres"
-  username: "postgres"
-  ssl: "true"
-  sslRejectUnauthorized: "false"
-
-node:
-  tlsRejectUnauthorized: "0"
-
-gcs:
-  bucketName: "eg-dev-bucket"
-
-deployment:
-  revisionHistoryLimit: 3
-
-
-
-replicaCount: 2
-
-configMap:
-  LOG_LEVEL: "debug"
-  PORT: "1337"
-
-namespaceLabels:
-  environment: dev
-  team: enhanced-games
-
-nodeSelector:
-  cloud.google.com/gke-nodepool: "eg-dev-app-np"
-
-networkPolicy:
-  enabled: false
-
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1000
-  capabilities:
-    drop:
-      - ALL
-
-resources:
-  requests:
-    cpu: "250m"
-    memory: "512Mi"
-  limits:
-    cpu: "500m"
-    memory: "1Gi"
-
-
-
-probes:
-  liveness:
-    path: /admin
-    initialDelaySeconds: 30
-    periodSeconds: 15
-    failureThreshold: 3
-    timeoutSeconds: 5
-  readiness:
-    path: /admin
-    initialDelaySeconds: 20
-    periodSeconds: 10
-    failureThreshold: 3
-    timeoutSeconds: 5
-  startup:
-    path: /admin
-    failureThreshold: 30
-    periodSeconds: 10
-
-service:
-  type: ClusterIP
-  port: 1337
-  targetPort: 1337
-  annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"ports": {"1337":"eg-cms-backendconfig"}}'
-
-backendConfig:
-  enabled: true
-  healthCheck:
-    enabled: true
-    checkIntervalSec: 15
-    timeoutSec: 5
-    healthyThreshold: 1
-    unhealthyThreshold: 2
+  app:
     port: 1337
-    type: HTTP
-    requestPath: "/admin"
-  sessionAffinity:
-    enabled: false
-    affinityType: "GENERATED_COOKIE"
-    affinityCookieTtlSec: 3600
-  connectionDraining:
-    enabled: true
-    drainingTimeoutSec: 60
-  cdn:
-    enabled: false
-    cachePolicy:
-      includeHost: false
-      includeProtocol: false
-      includeQueryString: false
-  securityPolicy:
-    enabled: true
-    name: eg-dev-security-policy
+    name: "cms"
+    env: "development"
+    terminationGracePeriodSeconds: 60
+  
+  configMap:
+    LOG_LEVEL: "debug"
+    PORT: "1337"
 
-externalSecrets:
-  enabled: true
-  createSecretStore: false
-  secretStoreRef:
-    name: gcp-dev-secret-store
-    kind: ClusterSecretStore
-    serviceAccountName: gke-workload-sa
-    serviceAccountNamespace: dev-eg
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+  
+  probes:
+    liveness:
+      path: /admin
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      failureThreshold: 3
+      timeoutSeconds: 5
+    readiness:
+      path: /admin
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      failureThreshold: 3
+      timeoutSeconds: 5
+    startup:
+      path: /admin
+      failureThreshold: 30
+      periodSeconds: 10
+
+
+# NETWORK CONFIGURATION
+networking:
+  service:
+    type: ClusterIP
+    port: 1337
+    targetPort: 1337
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: '{"ports": {"1337":"eg-cms-backendconfig"}}'
+
+# SECURITY CONFIGURATION
+security:
+  serviceAccount:
+    create: true
+    name: gke-workload-sa
+    automountToken: false
+    annotations:
+      iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
+
+  networkPolicy:
+    enabled: false
+  
+  externalSecrets:
+    enabled: true
+    createSecretStore: false
+    secretStoreRef:
+      name: gcp-dev-secret-store
+      kind: ClusterSecretStore
+      serviceAccountName: gke-workload-sa
+      serviceAccountNamespace: dev-eg
 
   secrets:
     - secretName: eg-dev-strapi-secrets
@@ -167,66 +118,173 @@ externalSecrets:
         - secretKey: JWT_SECRET
           remoteRef:
             key: eg-dev-jwt-secret
-
-envFromSecrets: 
-  - secretName: eg-dev-strapi-secrets
-
-persistence:
-  enabled: false
-  mountPath: ""
-  size: ""
-  storageClass: ""
-  accessMode: ReadWriteOnce
-
-auth:
-  workloadIdentity:
-    clusterLocation: europe-west2
-    clusterName: eg-cluster
-    serviceAccountRef:
-      name: gke-workload-sa
-
-tolerations:
-  - key: "environment"
-    operator: "Equal"
-    value: "development"
-    effect: "NoSchedule"
-
-serviceAccount:
-  create: false
-  name: gke-workload-sa
-  annotations:
-    iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
-
-hpa:
+  
+  envFromSecrets: 
+    - secretName: eg-dev-strapi-secrets
+  
+  
+backendConfig:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 5
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 65
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 75
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: 60
-      policies:
-        - type: Pods
-          value: 2
-          periodSeconds: 60
-    scaleDown:
-      stabilizationWindowSeconds: 300
-      policies:
-        - type: Pods
-          value: 1
-          periodSeconds: 120
+  securityPolicy:
+    enabled: true
+    name: eg-dev-security-policy
+  healthCheck:
+    enabled: true
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    port: 1337
+    type: HTTP
+    requestPath: "/admin"
+  sessionAffinity:
+    enabled: false
+    affinityType: "GENERATED_COOKIE"
+    affinityCookieTtlSec: 3600
+  connectionDraining:
+    enabled: true
+    drainingTimeoutSec: 60
+  cdn:
+      enabled: false
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
+      cacheMode: CACHE_ALL_STATIC
+      defaultTtl: 3600
+      maxTtl: 86400
+      negativeCaching: true
+
+# PLATFORM CONFIGURATION
+platform:
+  deployment:
+    revisionHistoryLimit: 3
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    revisionHistoryLimit: 3
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 65
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 60
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
+          - type: Pods
+            value: 1
+            periodSeconds: 120
+
+
+# POD CONFIGURATION
+pod:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+  
+  nodeSelector:
+    cloud.google.com/gke-nodepool: "eg-dev-app-np"
+
+  tolerations:
+    - key: "environment"
+      operator: "Equal"
+      value: "development"
+      effect: "NoSchedule"
+
+  podDisruptionBudget:
+    enabled: false
+
+
+
+
+# CONFIGMAP  VALUES
+configMap:
+  DATABASE_CLIENT: "postgres"
+  DATABASE_HOST: "10.13.0.5"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "postgres"
+  DATABASE_USERNAME: "postgres"
+  DATABASE_SSL: "true"
+  DATABASE_SSL_REJECT_UNAUTHORIZED: "false"
+  NODE_TLS_REJECT_UNAUTHORIZED: "0"
+  GCS_BUCKET_NAME: "eg-dev-bucket"
+  LOG_LEVEL: "debug"
+  PORT: "1337"
+  
+
+
+
+
+
+# VOLUME CONFIGURATION
+volumes:
+  persistence:
+    enabled: false
+    mountPath: ""
+    size: ""
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

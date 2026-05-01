@@ -1,10 +1,12 @@
 ---
-# Test 1: Strapi health endpoint
+# ============================================================
+# 🧪 Test 1: Strapi health endpoint
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
   name: {{ include "eg-cms.fullname" . }}-test-health
-  namespace: {{ .Values.namespace }}
+  namespace: {{ required "environment.namespace must be set" .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
@@ -13,6 +15,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-health
       image: curlimages/curl:8.6.0
@@ -28,10 +31,9 @@ spec:
         - -c
         - |
           echo "==> Testing Strapi /_health endpoint..."
-          # Retry up to 10 times — Strapi can be slow to be ready post-deploy
-          for i in $(seq 1 10); do
+          for i in $(seq 1 12); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              http://{{ include "eg-cms.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.service.port }}/_health)
+              http://{{ include "eg-cms.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local:{{ .Values.networking.service.port }}/_health)
             echo "Attempt $i: Status=$STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "PASS: /_health returned 200"
@@ -39,15 +41,18 @@ spec:
             fi
             sleep 5
           done
-          echo "FAIL: /_health did not return 200 after 10 attempts"
+          echo "FAIL: /_health did not return 200 after 12 attempts"
           exit 1
+
 ---
-# Test 2: Secret injection — all 10 Strapi secrets present
+# ============================================================
+# 🧪 Test 2: Secret injection — all CMS secrets present
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
   name: {{ include "eg-cms.fullname" . }}-test-secrets
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
@@ -56,6 +61,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-secrets
       image: busybox:1.36
@@ -67,33 +73,41 @@ spec:
         capabilities:
           drop: ["ALL"]
       envFrom:
+        {{- range .Values.security.envFromSecrets }}
         - secretRef:
-            name: eg-cms-app-secrets
+            name: {{ .secretName }}
+        {{- end }}
       command:
         - sh
         - -c
         - |
           echo "==> Testing secret injection..."
           FAIL=0
-          for VAR in DATABASE_CLIENT DATABASE_HOST DATABASE_PORT DATABASE_NAME \
-                     DATABASE_USERNAME DATABASE_PASSWORD JWT_SECRET \
-                     ADMIN_JWT_SECRET APP_KEYS API_TOKEN_SALT; do
-            VAL=$(eval echo \$$VAR)
-            if [ -z "$VAL" ]; then
-              echo "FAIL: $VAR is empty or missing"
-              FAIL=1
-            else
-              echo "PASS: $VAR present (length=${#VAL})"
-            fi
-          done
+
+          {{- range .Values.security.externalSecrets.secrets }}
+          {{- range .data }}
+          VAL=$(printenv {{ .secretKey }} || true)
+          if [ -z "$VAL" ]; then
+            echo "FAIL: {{ .secretKey }} is missing or empty"
+            FAIL=1
+          else
+            echo "PASS: {{ .secretKey }} is populated (length=${#VAL})"
+          fi
+          {{- end }}
+          {{- end }}
+
           exit $FAIL
+
 ---
-# Test 3: PVC is mounted and writable
+# ============================================================
+# 🧪 Test 3: PVC mount and writability
+# ============================================================
+{{- if .Values.volumes.persistence.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
   name: {{ include "eg-cms.fullname" . }}-test-pvc
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
@@ -102,12 +116,13 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-pvc
       image: busybox:1.36
       securityContext:
         allowPrivilegeEscalation: false
-        readOnlyRootFilesystem: false   # needs write for test
+        readOnlyRootFilesystem: false
         runAsNonRoot: true
         runAsUser: 1000
         capabilities:
@@ -117,28 +132,32 @@ spec:
         - -c
         - |
           echo "==> Testing PVC mount and writability..."
-          TEST_FILE="{{ .Values.persistence.mountPath }}/.helm-test-probe"
+          TEST_FILE="{{ .Values.volumes.persistence.mountPath }}/.helm-test-probe"
           echo "helm-test" > "$TEST_FILE"
           if [ $? -ne 0 ]; then
-            echo "FAIL: Cannot write to {{ .Values.persistence.mountPath }}"
+            echo "FAIL: Cannot write to {{ .Values.volumes.persistence.mountPath }}"
             exit 1
           fi
           rm -f "$TEST_FILE"
-          echo "PASS: PVC at {{ .Values.persistence.mountPath }} is writable"
+          echo "PASS: PVC at {{ .Values.volumes.persistence.mountPath }} is writable"
       volumeMounts:
         - name: uploads
-          mountPath: {{ .Values.persistence.mountPath }}
+          mountPath: {{ .Values.volumes.persistence.mountPath }}
   volumes:
     - name: uploads
       persistentVolumeClaim:
         claimName: {{ include "eg-cms.fullname" . }}-uploads
+{{- end }}
+
 ---
-# Test 4: DNS + network reachability
+# ============================================================
+# 🧪 Test 4: DNS resolution
+# ============================================================
 apiVersion: v1
 kind: Pod
 metadata:
-  name: {{ include "eg-cms.fullname" . }}-test-network
-  namespace: {{ .Values.namespace }}
+  name: {{ include "eg-cms.fullname" . }}-test-dns
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
   annotations:
@@ -147,6 +166,47 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
+  containers:
+    - name: test-dns
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          FQDN="{{ include "eg-cms.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local"
+          echo "==> DNS resolution for $FQDN..."
+          if ! nslookup "$FQDN"; then
+            echo "FAIL: DNS resolution failed for $FQDN"
+            exit 1
+          fi
+          echo "PASS: DNS resolved"
+
+---
+# ============================================================
+# 🧪 Test 5: TCP connectivity
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-cms.fullname" . }}-test-network
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
   containers:
     - name: test-network
       image: busybox:1.36
@@ -161,11 +221,124 @@ spec:
         - sh
         - -c
         - |
-          SVC="{{ include "eg-cms.fullname" . }}.{{ .Values.namespace }}.svc.cluster.local"
-          echo "==> DNS resolution for $SVC..."
-          nslookup "$SVC" || { echo "FAIL: DNS resolution failed"; exit 1; }
-          echo "PASS: DNS resolved"
+          SVC="{{ include "eg-cms.fullname" . }}.{{ .Values.environment.namespace }}.svc.cluster.local"
+          PORT="{{ .Values.networking.service.port }}"
+          echo "==> TCP connectivity to $SVC:$PORT..."
+          if ! nc -z "$SVC" "$PORT"; then
+            echo "FAIL: Cannot reach $SVC:$PORT"
+            exit 1
+          fi
+          echo "PASS: Port $PORT reachable"
 
-          echo "==> TCP connectivity to port {{ .Values.service.port }}..."
-          nc -zv "$SVC" {{ .Values.service.port }} || { echo "FAIL: Port unreachable"; exit 1; }
-          echo "PASS: Port {{ .Values.service.port }} reachable"
+---
+# ============================================================
+# 🧪 Test 6: Database TCP connectivity
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-cms.fullname" . }}-test-database
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "6"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
+  containers:
+    - name: test-database
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - sh
+        - -c
+        - |
+          DB_HOST="{{ .Values.configMap.DATABASE_HOST }}"
+          DB_PORT="{{ .Values.configMap.DATABASE_PORT }}"
+          echo "==> Testing TCP connectivity to DB $DB_HOST:$DB_PORT"
+          if ! nc -z "$DB_HOST" "$DB_PORT"; then
+            echo "FAIL: Cannot reach database at $DB_HOST:$DB_PORT"
+            exit 1
+          fi
+          echo "PASS: Database TCP connectivity OK"
+
+---
+# ============================================================
+# 🧪 Test 7: Replica floor
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "eg-cms.fullname" . }}-test-replicas
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "7"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ .Values.security.serviceAccount.name }}
+  containers:
+    - name: test-replicas
+      image: curlimages/curl:8.6.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 1000
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - name: MIN_REPLICAS
+          value: "{{ .Values.platform.hpa.minReplicas }}"
+        - name: MAX_REPLICAS
+          value: "{{ .Values.platform.hpa.maxReplicas }}"
+        - name: NAMESPACE
+          value: "{{ .Values.environment.namespace }}"
+        - name: DEPLOY_NAME
+          value: "{{ include "eg-cms.fullname" . }}"
+      command:
+        - sh
+        - -c
+        - |
+          echo "==> Checking replica count via Kubernetes API..."
+          echo "    Expected: min=$MIN_REPLICAS  max=$MAX_REPLICAS"
+
+          TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          API="https://kubernetes.default.svc"
+
+          READY=$(curl -s --cacert "$CA" \
+            -H "Authorization: Bearer $TOKEN" \
+            "$API/apis/apps/v1/namespaces/$NAMESPACE/deployments/$DEPLOY_NAME" \
+            | grep -o '"readyReplicas":[0-9]*' | grep -o '[0-9]*')
+
+          echo "  Ready replicas: $READY"
+
+          if [ -z "$READY" ]; then
+            echo "FAIL: Could not read readyReplicas"
+            exit 1
+          fi
+
+          if [ "$READY" -lt "$MIN_REPLICAS" ]; then
+            echo "FAIL: $READY ready replicas is below HPA minimum of $MIN_REPLICAS"
+            exit 1
+          fi
+
+          if [ "$READY" -gt "$MAX_REPLICAS" ]; then
+            echo "FAIL: $READY ready replicas exceeds HPA maximum of $MAX_REPLICAS"
+            exit 1
+          fi
+
+          echo "PASS: Replica count $READY is within [$MIN_REPLICAS, $MAX_REPLICAS]"

@@ -16,5 +16,9 @@ spec:
       includeHost: {{ .Values.security.backendConfig.cdn.cachePolicy.includeHost }}
       includeProtocol: {{ .Values.security.backendConfig.cdn.cachePolicy.includeProtocol }}
       includeQueryString: {{ .Values.security.backendConfig.cdn.cachePolicy.includeQueryString }}
+    cacheMode: {{ .Values.security.backendConfig.cdn.cacheMode }} 
+    defaultTtl: {{ .Values.security.backendConfig.cdn.defaultTtl }}
+    maxTtl: {{ .Values.security.backendConfig.cdn.maxTtl }}
+    negativeCaching: {{ .Values.security.backendConfig.cdn.negativeCaching }}
   {{- end }}
 {{- end }}

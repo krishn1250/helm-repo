@@ -1,201 +1,110 @@
+#PROJECT DETAILS
 global:
-  project: "enhanced-games-gc"
-  cluster: "eg-cluster"
-  region: "europe-west2"
+  project: enhanced-games-gc
+  region: europe-west2
+  cluster: eg-cluster
 
-image:
-  repository: ""
-  tag: ""
-  pullPolicy: IfNotPresent
+# ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
+environment:
+  namespace: ""
+  labels:
+    environment: ""
+    team: enhanced-games
+  
+    
+  namespaceLabels:
+    environment:
+    team: 
+  
+  namespaceAnnotations: {}
 
-namespace: ""
+#APPLICATION CONFIGURATION
+application:
+  name: eg-cms
+  replicaCount: ""
 
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
 
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  runAsNonRoot: true
-  runAsUser: 1000
-  capabilities:
-    drop:
-      - ALL
+  app:
+    port: 1337
+    name: "cms"
+    env: ""
+    terminationGracePeriodSeconds: 60
+  
+  configMap:
+    LOG_LEVEL: "debug"
+    PORT: "1337"
 
-namespaceLabels:
-  environment:
-  team: 
-
-namespaceAnnotations: {}
-
-replicaCount: 
-
-nodeSelector: {}
-
-app:
-  port: 1337
-  terminationGracePeriodSeconds: 60
-
-
-
-hpa:
-  enabled: true
-  minReplicas: ""
-  maxReplicas: ""
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: ""
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: ""
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: ""
-      policies:
-        - type: Pods
-          value: ""
-          periodSeconds: ""
-    scaleDown:
-      stabilizationWindowSeconds: ""
-      policies:
-        - type: Pods
-          value: ""
-          periodSeconds: ""
-
-service:
-  type: ClusterIP
-  port: 1337
-  targetPort: 1337
-  annotations: {}
-
-managedCertificate:
-  enabled: false
-  domains: []  
+  resources:
+    requests:
+      cpu: ""
+      memory: ""
+    limits:
+      cpu: ""
+      memory: ""
+  
+  probes:
+    liveness:
+      path: /admin
+      initialDelaySeconds: ""
+      periodSeconds: ""
+      failureThreshold: ""
+      timeoutSeconds: ""
+    readiness:
+      path: /admin
+      initialDelaySeconds: ""
+      periodSeconds: ""
+      failureThreshold: ""
+      timeoutSeconds: 5
+    startup:
+      path: /admin
+      failureThreshold: ""
+      periodSeconds: ""
 
 
-ingress:
-  enabled: false
-  className: "gce"
-  annotations:
-    kubernetes.io/ingress.class: "gce"
-  staticIpName: ""      
-  backendConfig: ""     
-  extraAnnotations: {}
-  hosts: []      
+# NETWORK CONFIGURATION
+networking:
+  service:
+    type: ClusterIP
+    port: 1337
+    targetPort: 1337
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: ''
 
-probes:
-  liveness:
-    path: /healthz
-    initialDelaySeconds: 30
-    periodSeconds: 15
-    failureThreshold: 3
-    timeoutSeconds: 5
-  readiness:
-    path: /readyz
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    failureThreshold: 3
-    timeoutSeconds: 5
-  startup:
-    path: /healthz
-    failureThreshold: 30
-    periodSeconds: 10
+# SECURITY CONFIGURATION
+security:
+  serviceAccount:
+    create: false
+    name: gke-workload-sa
+    automountToken: false
+    annotations:
+      iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
 
-
-externalSecrets:
-  enabled: false
-  refreshInterval: "1h"
-  secretStoreRef:
-    name: ""
-    kind: ClusterSecretStore
-    serviceAccountName: ""
-    serviceAccountNamespace: ""
-  secrets: []
-
-envFromSecrets: []
-
-env:
-  - name: PORT
-    value: "1337"
-  - name: LOG_LEVEL
-    value: "info"
-
-# envFromSecrets:
-#   - secretName: ""
-
-networkPolicy:
-  enabled: false
-  ingress:
-    - from:
-        - podSelector: {}
-      ports:
-        - protocol: TCP
-          port: 1337
-  egress:
-    - ports:
-        - port: 53
-          protocol: UDP
-        - port: 53
-          protocol: TCP
-    - ports:
-        - port: 443
-          protocol: TCP
-
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
-
-deployment:
-  revisionHistoryLimit: 3
-
-# podSecurityContext:
-#   runAsNonRoot: true
-#   runAsUser: 1000
-#   runAsGroup: 1000
-#   fsGroup: 1000
-#   seccompProfile:
-#     type: RuntimeDefault
-
-
-
-serviceAccount:
-  create: true
-  name: ""
-  annotations:
-    iam.gke.io/gcp-service-account: ""
-
-
-
-tolerations: []
-
-podAnnotations:
-  cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "1337"
-  prometheus.io/path: "/metrics"
-
-auth:
-  workloadIdentity:
-    serviceAccountRef:
+  networkPolicy:
+    enabled: false
+  
+  externalSecrets:
+    enabled: true
+    createSecretStore: false
+    secretStoreRef:
       name: ""
-      namespace: ""
-
-
-persistence:
-  enabled: false
-  mountPath: ""
-  size: ""
-  storageClass: ""
-  accessMode: ReadWriteOnce
-
-
+      kind: ClusterSecretStore
+      serviceAccountName: gke-workload-sa
+      serviceAccountNamespace: ""
+  
+  envFromSecrets: 
+    - secretName: ""
+  
+  
 backendConfig:
   enabled: true
+  securityPolicy:
+    enabled: true
+    name: ""
   healthCheck:
     enabled: true
     checkIntervalSec: 15
@@ -204,7 +113,7 @@ backendConfig:
     unhealthyThreshold: 2
     port: 1337
     type: HTTP
-    requestPath: "/healthz"
+    requestPath: "/admin"
   sessionAffinity:
     enabled: false
     affinityType: "GENERATED_COOKIE"
@@ -213,11 +122,154 @@ backendConfig:
     enabled: true
     drainingTimeoutSec: 60
   cdn:
+      enabled: false
+      cachePolicy:
+        includeHost: true
+        includeProtocol: true
+        includeQueryString: false
+      cacheMode: CACHE_ALL_STATIC
+      defaultTtl: 3600
+      maxTtl: 86400
+      negativeCaching: true
+
+# PLATFORM CONFIGURATION
+platform:
+  deployment:
+    revisionHistoryLimit: ""
+
+  podDisruptionBudget:
     enabled: false
-    cachePolicy:
-      includeHost: false
-      includeProtocol: false
-      includeQueryString: false
-  securityPolicy:
+    minAvailable: ''
+
+  hpa:
+    enabled: true
+    minReplicas: ""
+    maxReplicas: ""
+    revisionHistoryLimit: ""
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 65
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 75
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 60
+          - type: Pods
+            value: 2
+            periodSeconds: 60
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Max
+        policies:
+          - type: Percent
+            value: 50
+            periodSeconds: 60
+          - type: Pods
+            value: 1
+            periodSeconds: 120
+
+
+# POD CONFIGURATION
+pod:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+  
+  nodeSelector:
+    cloud.google.com/gke-nodepool: ""
+
+  tolerations:
+    - key: "environment"
+      operator: "Equal"
+      value: ""
+      effect: ""
+
+  podDisruptionBudget:
     enabled: false
-    name: ""
+  
+  podAnnotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "1337"
+    prometheus.io/path: "/metrics"
+
+
+
+
+# CONFIGMAP  VALUES
+configMap:
+  DATABASE_CLIENT: ""
+  DATABASE_HOST: ""
+  DATABASE_PORT: ""
+  DATABASE_NAME: ""
+  DATABASE_USERNAME: ""
+  DATABASE_SSL: ""
+  DATABASE_SSL_REJECT_UNAUTHORIZED: ""
+  NODE_TLS_REJECT_UNAUTHORIZED: ""
+  GCS_BUCKET_NAME: ""
+  LOG_LEVEL: "debug"
+  PORT: "1337"
+  
+
+
+  
+
+
+
+
+
+# VOLUME CONFIGURATION
+volumes:
+  persistence:
+    enabled: false
+    mountPath: ""
+    size: ""
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
