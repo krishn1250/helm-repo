@@ -2,27 +2,26 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "eg-cms.fullname" . }}-config
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
 data:
-  APP_ENV: {{ .Values.app.env | default .Values.namespace | quote }}
+  APP_ENV: {{ .Values.application.app.env | default .Values.environment.namespace | quote }}
   GCP_REGION: {{ .Values.global.region | quote }}
   GCP_PROJECT: {{ .Values.global.project | quote }}
   CLUSTER_NAME: {{ .Values.global.cluster | quote }}
 
-  DATABASE_CLIENT: {{ .Values.database.client | quote }}
-  DATABASE_HOST: {{ .Values.database.host | quote }}
-  DATABASE_PORT: {{ .Values.database.port | quote }}
-  DATABASE_NAME: {{ .Values.database.name | quote }}
-  DATABASE_USERNAME: {{ .Values.database.username | quote }}
-  DATABASE_SSL: {{ .Values.database.ssl | quote }}
-  DATABASE_SSL_REJECT_UNAUTHORIZED: {{ .Values.database.sslRejectUnauthorized | quote }}
+  DATABASE_CLIENT: {{ .Values.configMap.DATABASE_CLIENT | quote }}
+  DATABASE_HOST: {{ .Values.configMap.DATABASE_HOST | quote }}
+  DATABASE_PORT: {{ .Values.configMap.DATABASE_PORT | quote }}
+  DATABASE_NAME: {{ .Values.configMap.DATABASE_NAME | quote }}
+  DATABASE_USERNAME: {{ .Values.configMap.DATABASE_USERNAME | quote }}
+  DATABASE_SSL: {{ .Values.configMap.DATABASE_SSL | quote }}
+  DATABASE_SSL_REJECT_UNAUTHORIZED: {{ .Values.configMap.DATABASE_SSL_REJECT_UNAUTHORIZED | quote }}
 
-  NODE_TLS_REJECT_UNAUTHORIZED: {{ .Values.node.tlsRejectUnauthorized | quote }}
+  NODE_TLS_REJECT_UNAUTHORIZED: {{ .Values.configMap.NODE_TLS_REJECT_UNAUTHORIZED | quote }}
 
-  GCS_BUCKET_NAME: {{ .Values.gcs.bucketName | quote }}
+  GCS_BUCKET_NAME: {{ .Values.configMap.GCS_BUCKET_NAME | quote }}
 
-  {{- with .Values.configMap }}
-  {{- toYaml . | nindent 2 }}
-  {{- end }}
+  LOG_LEVEL: {{ .Values.configMap.LOG_LEVEL | quote }}
+  PORT: {{ .Values.configMap.PORT | quote }}

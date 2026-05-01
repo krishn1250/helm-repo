@@ -1,9 +1,9 @@
-{{- if .Values.hpa.enabled }}
+{{- if .Values.platform.hpa.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "eg-cms.fullname" . }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
 spec:
@@ -11,11 +11,12 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "eg-cms.fullname" . }}
-  minReplicas: {{ .Values.hpa.minReplicas | default 2 }}
-  maxReplicas: {{ .Values.hpa.maxReplicas | default 5 }}
+  minReplicas: {{ .Values.platform.hpa.minReplicas | default 2 }}
+  maxReplicas: {{ .Values.platform.hpa.maxReplicas | default 5 }}
+  # revisionHistoryLimit: {{ .Values.platform.hpa.revisionHistoryLimit | default 3 }}
   metrics:
-    {{- toYaml .Values.hpa.metrics | nindent 4 }}
-  {{- with .Values.hpa.behavior }}
+    {{- toYaml .Values.platform.hpa.metrics | nindent 4 }}
+  {{- with .Values.platform.hpa.behavior }}
   behavior:
     {{- toYaml . | nindent 4 }}
   {{- end }}

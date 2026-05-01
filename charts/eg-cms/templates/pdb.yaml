@@ -1,18 +1,18 @@
-{{- if .Values.podDisruptionBudget.enabled }}
+{{- if .Values.platform.podDisruptionBudget.enabled }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "eg-cms.fullname" . }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
       {{- include "eg-cms.selectorLabels" . | nindent 6 }}
-  {{- if .Values.podDisruptionBudget.maxUnavailable }}
-  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- if .Values.platform.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.platform.podDisruptionBudget.maxUnavailable }}
   {{- else }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  minAvailable: {{ .Values.platform.podDisruptionBudget.minAvailable | default 1 }}
   {{- end }}
 {{- end }}

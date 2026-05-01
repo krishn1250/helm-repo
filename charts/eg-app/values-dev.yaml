@@ -20,7 +20,7 @@ application:
 
   image:
     repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
-    tag: v1.2.6
+    tag: v1.3.0
     pullPolicy: IfNotPresent
 
   app:
@@ -85,6 +85,24 @@ networking:
             servicePort: 3000
       - host: cms-dev.enhanced.com
         paths:
+          # CDN-cached API paths → cdn service
+          - path: /api/athletes
+            pathType: Exact
+            serviceName: eg-cms-cdn
+            servicePort: 1337
+          - path: /api/athletes/
+            pathType: Prefix
+            serviceName: eg-cms-cdn
+            servicePort: 1337
+          - path: /api/events/feed
+            pathType: Exact
+            serviceName: eg-cms-cdn
+            servicePort: 1337
+          - path: /api/events/
+            pathType: Prefix
+            serviceName: eg-cms-cdn
+            servicePort: 1337
+          # Everything else → regular service (no CDN)
           - path: /
             pathType: Prefix
             serviceName: eg-cms
@@ -130,6 +148,12 @@ security:
           - secretKey: VITE_STRAPI_TOKEN
             remoteRef:
               key: eg-dev-strapi-token
+          - secretKey: VITE_AUTH0_DOMAIN
+            remoteRef:
+              key: eg-dev-auth0-domain
+          - secretKey: VITE_AUTH0_CLIENT_ID
+            remoteRef:
+              key: eg-dev-auth0-clientid
 
   envFromSecrets:
     - secretName: eg-dev-app-secrets
@@ -170,7 +194,7 @@ security:
       cachePolicy:
         includeHost: true
         includeProtocol: true
-        includeQueryString: false
+        includeQueryString: true
       cacheMode: CACHE_ALL_STATIC
       defaultTtl: 3600
       maxTtl: 86400

@@ -74,6 +74,11 @@ networking:
     annotations:
       cloud.google.com/neg: '{"ingress": true}'
       cloud.google.com/backend-config: ''
+  cdnService:
+    enabled: false
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: ''
 
 # SECURITY CONFIGURATION
 security:
@@ -100,37 +105,37 @@ security:
     - secretName: ""
   
   
-backendConfig:
-  enabled: true
-  securityPolicy:
+  backendConfig:
     enabled: true
-    name: ""
-  healthCheck:
-    enabled: true
-    checkIntervalSec: 15
-    timeoutSec: 5
-    healthyThreshold: 1
-    unhealthyThreshold: 2
-    port: 1337
-    type: HTTP
-    requestPath: "/admin"
-  sessionAffinity:
-    enabled: false
-    affinityType: "GENERATED_COOKIE"
-    affinityCookieTtlSec: 3600
-  connectionDraining:
-    enabled: true
-    drainingTimeoutSec: 60
-  cdn:
+    securityPolicy:
+      enabled: true
+      name: ""
+    healthCheck:
+      enabled: true
+      checkIntervalSec: 15
+      timeoutSec: 5
+      healthyThreshold: 1
+      unhealthyThreshold: 2
+      port: 1337
+      type: HTTP
+      requestPath: "/admin"
+    sessionAffinity:
       enabled: false
-      cachePolicy:
-        includeHost: true
-        includeProtocol: true
-        includeQueryString: false
-      cacheMode: CACHE_ALL_STATIC
-      defaultTtl: 3600
-      maxTtl: 86400
-      negativeCaching: true
+      affinityType: "GENERATED_COOKIE"
+      affinityCookieTtlSec: 3600
+    connectionDraining:
+      enabled: true
+      drainingTimeoutSec: 60
+    cdn:
+        enabled: false
+        cachePolicy:
+          includeHost: true
+          includeProtocol: true
+          includeQueryString: false
+        cacheMode: CACHE_ALL_STATIC
+        defaultTtl: 3600
+        maxTtl: 86400
+        negativeCaching: true
 
 # PLATFORM CONFIGURATION
 platform:
@@ -238,6 +243,35 @@ configMap:
 
 
   
+# CDN BACKEND CONFIG — for specific cached paths only
+cdnBackendConfig:
+  enabled: false
+  securityPolicy:
+    enabled: true
+    name: ""
+  healthCheck:
+    enabled: true
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    port: 1337
+    type: HTTP
+    requestPath: "/admin"
+  connectionDraining:
+    enabled: true
+    drainingTimeoutSec: 60
+  cdn:
+    enabled: true
+    cachePolicy:
+      includeHost: true
+      includeProtocol: true
+      includeQueryString: false
+    cacheMode: CACHE_ALL_STATIC
+    defaultTtl: 3600
+    maxTtl: 86400
+    negativeCaching: true
+  cachedPaths: []
 
 
 

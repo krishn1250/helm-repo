@@ -2,22 +2,52 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "eg-cms.fullname" . }}
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
-  {{- with .Values.service.annotations }}
+  {{- with .Values.networking.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.service.type | default "ClusterIp" }}
+  type: {{ .Values.networking.service.type | default "ClusterIP" }}
   selector:
     {{- include "eg-cms.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       protocol: TCP
-      port: {{ .Values.service.port | default 1337 }}
-      targetPort: {{ .Values.service.targetPort | default 1337 }}
-      {{- if .Values.service.nodePort }}
-      nodePort: {{ .Values.service.nodePort }}
+      port: {{ .Values.networking.service.port | default 1337 }}
+      targetPort: {{ .Values.networking.service.targetPort | default 1337 }}
+      {{- if .Values.networking.service.nodePort }}
+      nodePort: {{ .Values.networking.service.nodePort }}
       {{- end }}
+{{- if .Values.networking.cdnService.enabled }}
+
+
+
+
+
+---
+
+
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "eg-cms.fullname" . }}-cdn
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.networking.cdnService.annotations | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "eg-cms.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.networking.service.port | default 1337 }}
+      targetPort: {{ .Values.networking.service.targetPort | default 1337 }}
+{{- end }}

@@ -3,22 +3,19 @@ apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
   name: {{ include "eg-cms.fullname" . }}-backendconfig
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.environment.namespace }}
   labels:
     {{- include "eg-cms.labels" . | nindent 4 }}
 spec:
-  timeoutSec: {{ .Values.backendConfig.timeoutSec | default 30 }}
-  ConnectionDraining:
-    drainingTimeoutSec: {{ .Values.backendConfig.connectionDraining.drainingTimeoutSec | default 120 }}
+  timeoutSec: {{ .Values.backendConfig.healthCheck.timeoutSec | default 30 }}
+  {{- if .Values.backendConfig.connectionDraining.enabled }}
+  connectionDraining:
+    drainingTimeoutSec: {{ .Values.backendConfig.connectionDraining.drainingTimeoutSec }}
+  {{- end }}
   {{- if .Values.backendConfig.sessionAffinity.enabled }}
   sessionAffinity:
-    enabled: {{ .Values.backendConfig.sessionAffinity.enabled }}
     affinityType: {{ .Values.backendConfig.sessionAffinity.affinityType | quote }}
-    ttlSec: {{ .Values.backendConfig.sessionAffinity.ttlSec }}
-  {{- end }}
-  {{- if .Values.backendConfig.CustomRequestHeaders }}
-  customRequestHeaders:
-    {{- toYaml .Values.backendConfig.CustomRequestHeaders | nindent 4 }}
+    ttlSec: {{ .Values.backendConfig.sessionAffinity.affinityCookieTtlSec }}
   {{- end }}
   {{- if .Values.backendConfig.healthCheck.enabled }}
   healthCheck:
@@ -30,13 +27,13 @@ spec:
     type: {{ .Values.backendConfig.healthCheck.type | quote }}
     requestPath: {{ .Values.backendConfig.healthCheck.requestPath | quote }}
   {{- end }}
-  {{- if .Values.backendConfig.connectionDraining.enabled }}
-  connectionDraining:
-    drainingTimeoutSec: {{ .Values.backendConfig.connectionDraining.drainingTimeoutSec }}
-  {{- end }}
   {{- if .Values.backendConfig.cdn.enabled }}
   cdn:
-    enabled: {{ .Values.backendConfig.cdn.enabled }}
+    enabled: true
+    cacheMode: {{ .Values.backendConfig.cdn.cacheMode | quote }}
+    defaultTtl: {{ .Values.backendConfig.cdn.defaultTtl }}
+    maxTtl: {{ .Values.backendConfig.cdn.maxTtl }}
+    negativeCaching: {{ .Values.backendConfig.cdn.negativeCaching }}
     cachePolicy:
       includeHost: {{ .Values.backendConfig.cdn.cachePolicy.includeHost }}
       includeProtocol: {{ .Values.backendConfig.cdn.cachePolicy.includeProtocol }}
@@ -45,5 +42,49 @@ spec:
   {{- if .Values.backendConfig.securityPolicy.enabled }}
   securityPolicy:
     name: {{ .Values.backendConfig.securityPolicy.name | quote }}
+  {{- end }}
+{{- end }}
+{{- if .Values.cdnBackendConfig.enabled }}
+
+
+
+
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ include "eg-cms.fullname" . }}-backendconfig-cdn
+  namespace: {{ .Values.environment.namespace }}
+  labels:
+    {{- include "eg-cms.labels" . | nindent 4 }}
+spec:
+  timeoutSec: {{ .Values.cdnBackendConfig.healthCheck.timeoutSec | default 30 }}
+  {{- if .Values.cdnBackendConfig.connectionDraining.enabled }}
+  connectionDraining:
+    drainingTimeoutSec: {{ .Values.cdnBackendConfig.connectionDraining.drainingTimeoutSec }}
+  {{- end }}
+  {{- if .Values.cdnBackendConfig.healthCheck.enabled }}
+  healthCheck:
+    checkIntervalSec: {{ .Values.cdnBackendConfig.healthCheck.checkIntervalSec }}
+    timeoutSec: {{ .Values.cdnBackendConfig.healthCheck.timeoutSec }}
+    healthyThreshold: {{ .Values.cdnBackendConfig.healthCheck.healthyThreshold }}
+    unhealthyThreshold: {{ .Values.cdnBackendConfig.healthCheck.unhealthyThreshold }}
+    port: {{ .Values.cdnBackendConfig.healthCheck.port }}
+    type: {{ .Values.cdnBackendConfig.healthCheck.type | quote }}
+    requestPath: {{ .Values.cdnBackendConfig.healthCheck.requestPath | quote }}
+  {{- end }}
+  cdn:
+    enabled: true
+    cacheMode: {{ .Values.cdnBackendConfig.cdn.cacheMode | quote }}
+    defaultTtl: {{ .Values.cdnBackendConfig.cdn.defaultTtl }}
+    maxTtl: {{ .Values.cdnBackendConfig.cdn.maxTtl }}
+    negativeCaching: {{ .Values.cdnBackendConfig.cdn.negativeCaching }}
+    cachePolicy:
+      includeHost: {{ .Values.cdnBackendConfig.cdn.cachePolicy.includeHost }}
+      includeProtocol: {{ .Values.cdnBackendConfig.cdn.cachePolicy.includeProtocol }}
+      includeQueryString: {{ .Values.cdnBackendConfig.cdn.cachePolicy.includeQueryString }}
+  {{- if .Values.cdnBackendConfig.securityPolicy.enabled }}
+  securityPolicy:
+    name: {{ .Values.cdnBackendConfig.securityPolicy.name | quote }}
   {{- end }}
 {{- end }}
