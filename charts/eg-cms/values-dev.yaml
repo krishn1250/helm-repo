@@ -298,7 +298,7 @@ cdnBackendConfig:
       includeHost: true
       includeProtocol: true
       includeQueryString: true 
-    cacheMode: CACHE_ALL_STATIC
+    cacheMode: FORCE_CACHE_ALL
     defaultTtl: 3600
     maxTtl: 86400
     negativeCaching: true
