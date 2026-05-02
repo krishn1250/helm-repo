@@ -5,34 +5,27 @@ environment:
   labels:
     environment: development
     team: enhanced-games
-
-
 # PROJECT DETAILS
 global:
   project: enhanced-games-gc
   region: europe-west2
   cluster: eg-cluster
-
 # APPLICATION CONFIGURATION
 application:
   name: eg-app
   replicaCount: 2
-
   image:
     repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
-    tag: v1.3.0
+    tag: 0d9876b36b046d2ef255b4589cf617abf8195169
     pullPolicy: IfNotPresent
-
   app:
     port: 3000
     name: "app"
     env: development
     terminationGracePeriodSeconds: 60
-
   config:
     LOG_LEVEL: debug
     PORT: "3000"
-
   resources:
     requests:
       cpu: "250m"
@@ -40,7 +33,6 @@ application:
     limits:
       cpu: "500m"
       memory: "1Gi"
-
   probes:
     liveness:
       path: /
@@ -58,7 +50,6 @@ application:
       path: /
       failureThreshold: 30
       periodSeconds: 10
-
 # NETWORK CONFIGURATION
 networking:
   service:
@@ -68,7 +59,6 @@ networking:
     annotations:
       cloud.google.com/neg: '{"ingress": true}'
       cloud.google.com/backend-config: '{"ports": {"3000":"eg-app-backendconfig"}}'
-
   ingress:
     enabled: true
     className: gce
@@ -107,14 +97,12 @@ networking:
             pathType: Prefix
             serviceName: eg-cms
             servicePort: 1337
-
   managedCertificate:
     enabled: true
     name: eg-dev-cert
     domains:
       - app-dev.enhanced.com
       - cms-dev.enhanced.com
-
 # SECURITY CONFIGURATION
 security:
   serviceAccount:
@@ -123,14 +111,12 @@ security:
     automountToken: false
     annotations:
       iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
-
   workloadIdentity:
     clusterLocation: europe-west2
     clusterName: eg-cluster
     serviceAccountRef:
       name: gke-workload-sa
       namespace: dev-eg
-
   externalSecrets:
     enabled: true
     refreshInterval: 1h
@@ -154,17 +140,15 @@ security:
           - secretKey: VITE_AUTH0_CLIENT_ID
             remoteRef:
               key: eg-dev-auth0-clientid
-
   envFromSecrets:
     - secretName: eg-dev-app-secrets
-
   networkPolicy:
     enabled: false
     ingress:
       - from:
           - namespaceSelector:
               matchLabels:
-                kubernetes.io/metadata.name: dev-eg   # ← own namespace only
+                kubernetes.io/metadata.name: dev-eg # ← own namespace only
           - podSelector: {}
         ports:
           - protocol: TCP
@@ -177,13 +161,11 @@ security:
               cidr: 0.0.0.0/0
         ports:
           - protocol: TCP
-            port: 443             # ← HTTPS only, removed port 80
+            port: 443 # ← HTTPS only, removed port 80
           - protocol: UDP
-
-            port: 53              # ← DNS resolution
+            port: 53 # ← DNS resolution
           - protocol: TCP
             port: 53
-
   backendConfig:
     enabled: true
     name: eg-app-backendconfig
@@ -199,16 +181,13 @@ security:
       defaultTtl: 3600
       maxTtl: 86400
       negativeCaching: true
-
 # PLATFORM CONFIGURATION
 platform:
   deployment:
     revisionHistoryLimit: 3
-
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
-
   hpa:
     enabled: true
     minReplicas: 2
@@ -248,7 +227,6 @@ platform:
           - type: Pods
             value: 1
             periodSeconds: 120
-
 # POD CONFIG
 pod:
   annotations:
@@ -256,23 +234,19 @@ pod:
     prometheus.io/scrape: "true"
     prometheus.io/port: "3000"
     prometheus.io/path: "/metrics"
-
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
     runAsGroup: 1000
     fsGroup: 1000
-
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false
     capabilities:
       drop:
         - ALL
-
   nodeSelector:
     cloud.google.com/gke-nodepool: "eg-dev-app-np"
-
   tolerations:
     - key: "environment"
       operator: "Equal"
