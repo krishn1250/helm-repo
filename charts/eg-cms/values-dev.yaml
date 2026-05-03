@@ -3,35 +3,29 @@ global:
   project: enhanced-games-gc
   region: europe-west2
   cluster: eg-cluster
-
 # ENVIRONMENT-SPECIFIC CONFIGURATION FOR DEV NAMESPACE
 environment:
   namespace: dev-eg
   labels:
     environment: development
     team: enhanced-games
-
 #APPLICATION CONFIGURATION
 application:
   name: eg-cms
   fullnameOverride: "eg-cms"
   replicaCount: 2
-
   image:
     repository: "europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-cms/eg-cms"
-    tag: "v1.1.3"
+    tag: "03229753ffa7e9324c13b5c85499581b9212cf48"
     pullPolicy: IfNotPresent
-
   app:
     port: 1337
     name: "cms"
     env: "development"
     terminationGracePeriodSeconds: 60
-  
   configMap:
     LOG_LEVEL: "debug"
     PORT: "1337"
-
   resources:
     requests:
       cpu: "250m"
@@ -39,7 +33,6 @@ application:
     limits:
       cpu: "500m"
       memory: "1Gi"
-  
   probes:
     liveness:
       path: /admin
@@ -57,8 +50,6 @@ application:
       path: /admin
       failureThreshold: 30
       periodSeconds: 10
-
-
 # NETWORK CONFIGURATION
 networking:
   service:
@@ -73,7 +64,6 @@ networking:
     annotations:
       cloud.google.com/neg: '{"ingress": true}'
       cloud.google.com/backend-config: '{"ports": {"1337":"eg-cms-backendconfig-cdn"}}'
-
 # SECURITY CONFIGURATION
 security:
   serviceAccount:
@@ -82,10 +72,8 @@ security:
     automountToken: false
     annotations:
       iam.gke.io/gcp-service-account: eg-workload-sa@enhanced-games-gc.iam.gserviceaccount.com
-
   networkPolicy:
     enabled: false
-  
   externalSecrets:
     enabled: true
     createSecretStore: false
@@ -94,30 +82,24 @@ security:
       kind: ClusterSecretStore
       serviceAccountName: gke-workload-sa
       serviceAccountNamespace: dev-eg
-
   secrets:
     - secretName: eg-dev-strapi-secrets
       data:
         - secretKey: DATABASE_PASSWORD
           remoteRef:
             key: eg-dev-db-password
-
         - secretKey: APP_KEYS
           remoteRef:
             key: eg-dev-app-keys
-
         - secretKey: API_TOKEN_SALT
           remoteRef:
             key: eg-dev-api-token-salt
-
         - secretKey: ADMIN_JWT_SECRET
           remoteRef:
             key: eg-dev-admin-jwt
-
         - secretKey: TRANSFER_TOKEN_SALT
           remoteRef:
             key: eg-dev-transfer-token
-
         - secretKey: ENCRYPTION_KEY
           remoteRef:
             key: eg-dev-encryption-key
@@ -133,8 +115,6 @@ security:
   
   envFromSecrets: 
     - secretName: eg-dev-strapi-secrets
-  
-  
 backendConfig:
   enabled: true
   securityPolicy:
@@ -157,25 +137,22 @@ backendConfig:
     enabled: true
     drainingTimeoutSec: 60
   cdn:
-      enabled: false
-      cachePolicy:
-        includeHost: true
-        includeProtocol: true
-        includeQueryString: true
-      cacheMode: FORCE_CACHE_ALL
-      defaultTtl: 3600
-      maxTtl: 86400
-      negativeCaching: true
-
+    enabled: false
+    cachePolicy:
+      includeHost: true
+      includeProtocol: true
+      includeQueryString: true
+    cacheMode: FORCE_CACHE_ALL
+    defaultTtl: 3600
+    maxTtl: 86400
+    negativeCaching: true
 # PLATFORM CONFIGURATION
 platform:
   deployment:
     revisionHistoryLimit: 3
-
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
-
   hpa:
     enabled: true
     minReplicas: 2
@@ -215,8 +192,6 @@ platform:
           - type: Pods
             value: 1
             periodSeconds: 120
-
-
 # POD CONFIGURATION
 pod:
   securityContext:
@@ -226,7 +201,6 @@ pod:
     fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
-  
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false
@@ -235,22 +209,15 @@ pod:
     capabilities:
       drop:
         - ALL
-  
   nodeSelector:
     cloud.google.com/gke-nodepool: "eg-dev-app-np"
-
   tolerations:
     - key: "environment"
       operator: "Equal"
       value: "development"
       effect: "NoSchedule"
-
   podDisruptionBudget:
     enabled: false
-
-
-
-
 # CONFIGMAP  VALUES
 configMap:
   DATABASE_CLIENT: "postgres"
@@ -264,12 +231,6 @@ configMap:
   GCS_BUCKET_NAME: "eg-dev-bucket"
   LOG_LEVEL: "debug"
   PORT: "1337"
-  
-
-
-
-
-
 # VOLUME CONFIGURATION
 volumes:
   persistence:
@@ -278,9 +239,6 @@ volumes:
     size: ""
     storageClass: ""
     accessMode: ReadWriteOnce
-
-
-
 cdnBackendConfig:
   enabled: true
   securityPolicy:
@@ -303,7 +261,7 @@ cdnBackendConfig:
     cachePolicy:
       includeHost: true
       includeProtocol: true
-      includeQueryString: true 
+      includeQueryString: true
     cacheMode: FORCE_CACHE_ALL
     defaultTtl: 3600
     maxTtl: 86400
@@ -317,16 +275,3 @@ cdnBackendConfig:
       pathType: Exact
     - path: /api/events/
       pathType: Prefix
-
-
-
-
-
-
-
-
-
-
-
-
-
