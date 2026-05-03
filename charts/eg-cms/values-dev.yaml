@@ -124,6 +124,12 @@ security:
         - secretKey: JWT_SECRET
           remoteRef:
             key: eg-dev-jwt-secret
+        - secretKey: GCP_PROJECT_ID
+          remoteRef:
+            key: eg--project-id
+        - secretKey: GCP_URL_MAPS
+          remoteRef:
+            key: eg-dev-url-maps
   
   envFromSecrets: 
     - secretName: eg-dev-strapi-secrets
