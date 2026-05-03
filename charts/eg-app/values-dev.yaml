@@ -16,7 +16,7 @@ application:
   replicaCount: 2
   image:
     repository: europe-west2-docker.pkg.dev/enhanced-games-gc/eg-dev-app/eg-app
-    tag: 6f9d789868b620b0ec0b5e47af2fd75de22b178c
+    tag: 78392d64f8939becd4658c8d4012dcb32f7b05b8
     pullPolicy: IfNotPresent
   app:
     port: 3000
